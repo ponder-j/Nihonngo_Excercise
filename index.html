@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f1e6" />
+    <meta
+      name="description"
+      content="可自适应难度的日语假名与罗马音练习工具。数据保存在本机。"
+    />
+    <title>かな Loop · 日语假名练习</title>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header">
+        <a class="brand" href="#" aria-label="かな Loop 首页">
+          <span class="brand-mark" aria-hidden="true">あ</span>
+          <span>
+            <strong>かな Loop</strong>
+            <small>每天一点，五十音渐渐熟练</small>
+          </span>
+        </a>
+
+        <div class="header-stats" aria-label="今日概览">
+          <span class="stat-chip">
+            <span>今日</span>
+            <strong id="header-today">0 题</strong>
+          </span>
+          <span class="stat-chip">
+            <span>忘记率</span>
+            <strong id="header-forgot-rate">--</strong>
+          </span>
+          <button class="icon-button" id="open-data-button" type="button" aria-label="查看学习数据">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 19V9m6 10V5m6 14v-7m4 7H2" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="practice-card" id="practice-card" aria-labelledby="question-label">
+          <div class="card-topline">
+            <div>
+              <span class="eyebrow" id="question-label">今日练习</span>
+              <p class="mode-label" id="mode-label">看假名，回忆罗马音</p>
+            </div>
+            <div class="question-count" aria-label="本次页面打开后的题数">
+              <span>本轮</span>
+              <strong id="session-count">0</strong>
+            </div>
+          </div>
+
+          <div class="question-stage" id="question-stage">
+            <span class="script-tag" id="script-tag">平假名</span>
+            <div class="prompt" id="prompt" lang="ja">あ</div>
+            <p class="prompt-hint" id="prompt-hint">先在心里读出来，再决定要不要显示答案。</p>
+            <div class="answer-panel" id="answer-panel" aria-live="polite" hidden>
+              <span class="answer-label">答案</span>
+              <div class="answer-value" id="answer-value"></div>
+              <div class="answer-detail" id="answer-detail"></div>
+            </div>
+          </div>
+
+          <div class="action-area">
+            <div class="reveal-actions" id="reveal-actions"></div>
+            <div class="judgement-actions">
+              <button class="button button-forgot" id="forgot-button" type="button">
+                <span class="button-icon" aria-hidden="true">×</span>
+                <span>我忘了！</span>
+                <kbd>1</kbd>
+              </button>
+              <button class="button button-known" id="known-button" type="button">
+                <span class="button-icon" aria-hidden="true">✓</span>
+                <span>我知道！</span>
+                <kbd>2</kbd>
+              </button>
+            </div>
+            <p class="keyboard-hint">快捷键：<kbd>空格</kbd> 显示答案 · <kbd>1</kbd> 忘记 · <kbd>2</kbd> 知道</p>
+          </div>
+
+          <div class="feedback-flash" id="feedback-flash" aria-live="polite"></div>
+        </section>
+
+        <aside class="side-panel" aria-label="学习数据">
+          <section class="panel-section today-section">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow">今日进度</span>
+                <h2>一点点，也算数</h2>
+              </div>
+              <span class="goal-badge" id="goal-badge">0 / 50</span>
+            </div>
+            <div class="today-content">
+              <div class="progress-ring" id="progress-ring" style="--progress: 0deg">
+                <div class="progress-ring-inner">
+                  <strong id="ring-count">0</strong>
+                  <span>题</span>
+                </div>
+              </div>
+              <div class="today-numbers">
+                <div>
+                  <span>记住了</span>
+                  <strong id="known-today">0</strong>
+                </div>
+                <div>
+                  <span>忘记了</span>
+                  <strong id="forgot-today">0</strong>
+                </div>
+                <div>
+                  <span>忘记率</span>
+                  <strong id="forgot-rate">--</strong>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel-section">
+            <div class="section-heading compact">
+              <div>
+                <span class="eyebrow">最近 7 天</span>
+                <h2>练习记录</h2>
+              </div>
+            </div>
+            <div class="week-chart" id="week-chart"></div>
+          </section>
+
+          <details class="panel-section weak-section" id="weak-section">
+            <summary class="section-heading compact weak-summary">
+              <div>
+                <span class="eyebrow">需要留意</span>
+                <h2>薄弱假名</h2>
+              </div>
+              <span class="weak-toggle">
+                <span class="soft-label">点击展开</span>
+                <svg class="weak-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m7 10 5 5 5-5" />
+                </svg>
+              </span>
+            </summary>
+            <div class="weak-list" id="weak-list"></div>
+          </details>
+        </aside>
+      </main>
+
+      <footer class="site-footer">
+        <span>数据仅保存在此浏览器的本机存储中</span>
+        <span>かな Loop · keep looping</span>
+      </footer>
+    </div>
+
+    <div class="modal-backdrop" id="milestone-modal" hidden>
+      <section class="modal-card milestone-card" role="dialog" aria-modal="true" aria-labelledby="milestone-title">
+        <div class="celebration-mark" aria-hidden="true">50</div>
+        <span class="eyebrow">50 题达成</span>
+        <h2 id="milestone-title">今天就到此为止了？</h2>
+        <p id="milestone-copy">你已经完成 50 题。再练一组当然可以，但现在收工也已经很棒了。</p>
+        <div class="milestone-stats">
+          <div><span>今日题数</span><strong id="milestone-total">50</strong></div>
+          <div><span>忘记率</span><strong id="milestone-rate">--</strong></div>
+        </div>
+        <div class="modal-actions">
+          <button class="button button-secondary" id="finish-button" type="button">拜拜</button>
+          <button class="button button-primary" id="continue-button" type="button">我还要做！</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="summary-modal" hidden>
+      <section class="modal-card summary-card" role="dialog" aria-modal="true" aria-labelledby="summary-title">
+        <span class="eyebrow">今日收工</span>
+        <h2 id="summary-title">お疲れさま！</h2>
+        <p>今天的练习已经记下来了。明天再打开，薄弱假名仍会优先出现。</p>
+        <div class="summary-grid">
+          <div><span>今日完成</span><strong id="summary-total">0 题</strong></div>
+          <div><span>记住了</span><strong id="summary-known">0 题</strong></div>
+          <div><span>忘记率</span><strong id="summary-rate">--</strong></div>
+        </div>
+        <div class="modal-actions">
+          <button class="button button-secondary" id="close-summary-button" type="button">看看数据</button>
+          <button class="button button-primary" id="restart-button" type="button">再来一组</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="modal-backdrop" id="data-modal" hidden>
+      <section class="modal-card data-card" role="dialog" aria-modal="true" aria-labelledby="data-title">
+        <div class="modal-heading">
+          <div>
+            <span class="eyebrow">本地数据</span>
+            <h2 id="data-title">学习概况</h2>
+          </div>
+          <button class="modal-close" id="close-data-button" type="button" aria-label="关闭">×</button>
+        </div>
+        <div class="data-overview">
+          <div><span>累计练习</span><strong id="data-total">0</strong><small>题</small></div>
+          <div><span>累计忘记</span><strong id="data-forgot">0</strong><small>题</small></div>
+          <div><span>掌握假名</span><strong id="data-mastered">0</strong><small>/ 71</small></div>
+        </div>
+        <div class="data-table-wrap">
+          <table>
+            <thead>
+              <tr><th>日期</th><th>题数</th><th>忘记</th><th>忘记率</th></tr>
+            </thead>
+            <tbody id="data-table-body"></tbody>
+          </table>
+        </div>
+        <p class="data-note">不断连续答对时，假名出现概率会降低；点“我忘了”后，它会更快回来。</p>
+        <div class="modal-actions between">
+          <button class="text-button" id="reset-data-button" type="button">清除全部数据</button>
+          <button class="button button-primary" id="close-data-footer-button" type="button">继续练习</button>
+        </div>
+      </section>
+    </div>
+
+    <div class="toast" id="toast" aria-live="polite"></div>
+    <script type="module" src="/src/app.js"></script>
+  </body>
+</html>
