@@ -35,6 +35,14 @@ npm run build
 npm run service:uninstall
 ```
 
+## 在线版本
+
+GitHub Pages 地址：
+
+<https://ponder-j.github.io/Nihonngo_Excercise/>
+
+推送到 `main` 分支后，GitHub Actions 会自动测试、构建并部署。
+
 ## 功能
 
 - 假名 → 罗马音：显示罗马音、我知道、我忘了
