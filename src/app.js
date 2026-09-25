@@ -1,5 +1,6 @@
 import "./styles.css";
 import { KANA_BY_ID } from "./kana.js";
+import { recognizeKana } from "./ocr.js";
 import {
   getDailyStats,
   getMasteredCount,
@@ -10,9 +11,16 @@ import {
   recordAnswer,
 } from "./engine.js";
 import { clearProgress, loadProgress, saveProgress } from "./store.js";
+import {
+  getValidationFields,
+  matchesValidationAnswer,
+  MAX_HANDWRITING_ATTEMPTS,
+  MAX_ROMAJI_ATTEMPTS,
+} from "./validation.js";
 
 const elements = {
   practiceCard: document.querySelector("#practice-card"),
+  validationMode: document.querySelector("#validation-mode"),
   modeLabel: document.querySelector("#mode-label"),
   scriptTag: document.querySelector("#script-tag"),
   prompt: document.querySelector("#prompt"),
@@ -22,6 +30,8 @@ const elements = {
   answerValue: document.querySelector("#answer-value"),
   answerDetail: document.querySelector("#answer-detail"),
   revealActions: document.querySelector("#reveal-actions"),
+  validationArea: document.querySelector("#validation-area"),
+  judgementActions: document.querySelector("#judgement-actions"),
   knownButton: document.querySelector("#known-button"),
   forgotButton: document.querySelector("#forgot-button"),
   sessionCount: document.querySelector("#session-count"),
@@ -63,8 +73,26 @@ function nextQuestion() {
   const id = pickNextItem(progress);
   const item = KANA_BY_ID[id];
   const prompt = pickPrompt();
-  current = { item, ...prompt };
+  current = { item, ...prompt, validation: createValidationState(prompt, item) };
   renderQuestion();
+}
+
+function createValidationState(prompt, item) {
+  return {
+    fields: Object.fromEntries(
+      getValidationFields(prompt, item).map((field) => [field.id, {
+        ...field,
+        attempts: 0,
+        status: "pending",
+        canvas: null,
+        input: null,
+        checkButton: null,
+        statusNode: null,
+      }]),
+    ),
+    hadMistake: false,
+    busy: false,
+  };
 }
 
 function renderQuestion() {
@@ -74,6 +102,15 @@ function renderQuestion() {
   elements.answerPanel.hidden = true;
   elements.answerPanel.classList.remove("is-visible");
   elements.practiceCard.classList.remove("is-revealed", "is-forgot", "is-known");
+  elements.validationArea.hidden = !elements.validationMode.checked;
+  elements.revealActions.hidden = elements.validationMode.checked;
+  elements.judgementActions.hidden = elements.validationMode.checked;
+  if (elements.validationMode.checked) {
+    renderValidationArea();
+    return;
+  }
+
+  elements.validationArea.replaceChildren();
   elements.revealActions.classList.toggle("has-two-actions", direction === "romajiToKana");
   elements.revealActions.replaceChildren();
 
@@ -114,6 +151,258 @@ function renderQuestion() {
   elements.forgotButton.disabled = false;
   elements.knownButton.classList.remove("pulse");
   elements.forgotButton.classList.remove("pulse");
+}
+
+function renderValidationArea() {
+  elements.validationArea.replaceChildren();
+  const validation = current.validation;
+  const fields = Object.values(validation.fields);
+  const intro = document.createElement("div");
+  intro.className = "validation-intro";
+  intro.innerHTML = `
+    <div>
+      <span class="eyebrow">主动回忆</span>
+      <strong>写出答案，再检查</strong>
+    </div>
+    <span class="validation-limit">手写最多 ${MAX_HANDWRITING_ATTEMPTS} 次 · 罗马音 1 次</span>
+  `;
+  elements.validationArea.append(intro);
+
+  const fieldGrid = document.createElement("div");
+  fieldGrid.className = `validation-fields validation-fields-${fields.length}`;
+  fields.forEach((field) => fieldGrid.append(createValidationField(field)));
+  elements.validationArea.append(fieldGrid);
+
+  const abandon = document.createElement("button");
+  abandon.type = "button";
+  abandon.className = "text-button validation-abandon";
+  abandon.textContent = "这题先跳过";
+  abandon.addEventListener("click", () => finishValidation("forgot"));
+  elements.validationArea.append(abandon);
+}
+
+function toggleValidationMode() {
+  if (elements.validationMode.checked) {
+    current.validation = createValidationState(current, current.item);
+  }
+  renderQuestion();
+}
+
+function createValidationField(field) {
+  const article = document.createElement("article");
+  article.className = "validation-field";
+  article.dataset.field = field.id;
+
+  const header = document.createElement("div");
+  header.className = "validation-field-header";
+  const label = document.createElement("strong");
+  label.textContent = field.label;
+  const attempts = document.createElement("span");
+  attempts.className = "validation-attempts";
+  attempts.textContent = `0 / ${field.kind === "handwriting" ? MAX_HANDWRITING_ATTEMPTS : MAX_ROMAJI_ATTEMPTS}`;
+  header.append(label, attempts);
+  article.append(header);
+
+  if (field.kind === "handwriting") {
+    const board = document.createElement("div");
+    board.className = "draw-board";
+    const canvas = document.createElement("canvas");
+    canvas.className = "draw-canvas";
+    canvas.width = 640;
+    canvas.height = 360;
+    canvas.setAttribute("aria-label", `手写${field.label}`);
+    board.append(canvas);
+
+    const placeholder = document.createElement("span");
+    placeholder.className = "draw-placeholder";
+    placeholder.textContent = `在这里写${field.label}`;
+    board.append(placeholder);
+
+    const clearButton = document.createElement("button");
+    clearButton.type = "button";
+    clearButton.className = "canvas-clear";
+    clearButton.textContent = "↺";
+    clearButton.title = "清空笔迹";
+    clearButton.setAttribute("aria-label", "清空笔迹");
+    board.append(clearButton);
+    article.append(board);
+
+    const drawState = { drawing: false, hasInk: false };
+    prepareCanvas(canvas);
+    bindCanvas(canvas, drawState, placeholder);
+    clearButton.addEventListener("click", () => clearCanvas(canvas, drawState, placeholder));
+    field.canvas = canvas;
+    field.drawState = drawState;
+  } else {
+    const inputWrap = document.createElement("label");
+    inputWrap.className = "romaji-input-wrap";
+    inputWrap.innerHTML = '<span class="input-prefix">↳</span>';
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "romaji-input";
+    input.placeholder = "输入罗马音";
+    input.autocomplete = "off";
+    input.autocapitalize = "none";
+    input.spellcheck = false;
+    input.setAttribute("aria-label", "输入罗马音");
+    inputWrap.append(input);
+    article.append(inputWrap);
+    field.input = input;
+  }
+
+  const footer = document.createElement("div");
+  footer.className = "validation-field-footer";
+  const status = document.createElement("span");
+  status.className = "validation-status";
+  status.textContent = field.kind === "handwriting" ? "等待识别" : "等待检查";
+  const checkButton = document.createElement("button");
+  checkButton.type = "button";
+  checkButton.className = "button button-check";
+  checkButton.textContent = field.kind === "handwriting" ? "识别并检查" : "检查";
+  checkButton.addEventListener("click", () => submitValidationField(field));
+  footer.append(status, checkButton);
+  article.append(footer);
+  field.statusNode = status;
+  field.checkButton = checkButton;
+  return article;
+}
+
+function prepareCanvas(canvas) {
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#fffdf8";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "#202735";
+  context.lineWidth = 18;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+}
+
+function canvasPoint(canvas, event) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+    y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+  };
+}
+
+function bindCanvas(canvas, drawState, placeholder) {
+  canvas.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    canvas.setPointerCapture(event.pointerId);
+    const point = canvasPoint(canvas, event);
+    const context = canvas.getContext("2d");
+    drawState.drawing = true;
+    drawState.hasInk = true;
+    placeholder.hidden = true;
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+  });
+  canvas.addEventListener("pointermove", (event) => {
+    if (!drawState.drawing) return;
+    event.preventDefault();
+    const point = canvasPoint(canvas, event);
+    const context = canvas.getContext("2d");
+    context.lineTo(point.x, point.y);
+    context.stroke();
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((eventName) => {
+    canvas.addEventListener(eventName, () => {
+      drawState.drawing = false;
+    });
+  });
+}
+
+function clearCanvas(canvas, drawState, placeholder) {
+  prepareCanvas(canvas);
+  drawState.hasInk = false;
+  drawState.drawing = false;
+  placeholder.hidden = false;
+}
+
+async function submitValidationField(field) {
+  if (!current || transitionLocked || current.validation.busy || field.status !== "pending") return;
+  if (field.kind === "handwriting" && !field.drawState.hasInk) {
+    setValidationStatus(field, "请先写一个假名", "error");
+    return;
+  }
+
+  current.validation.busy = true;
+  field.checkButton.disabled = true;
+  setValidationStatus(field, field.kind === "handwriting" ? "正在识别…" : "正在检查…", "busy");
+
+  try {
+    const value = field.kind === "handwriting"
+      ? (await recognizeKana(field.canvas, updateOcrStatus(field))).text
+      : field.input.value;
+    field.attempts += 1;
+    updateValidationAttempts(field);
+    const correct = matchesValidationAnswer(value, field);
+    if (correct) {
+      field.status = "correct";
+      setValidationStatus(field, "正确", "correct");
+      lockValidationField(field);
+    } else {
+      current.validation.hadMistake = true;
+      if (field.attempts >= (field.kind === "handwriting" ? MAX_HANDWRITING_ATTEMPTS : MAX_ROMAJI_ATTEMPTS)) {
+        field.status = "failed";
+        setValidationStatus(field, `不对，答案是 ${field.expected}`, "error");
+        lockValidationField(field);
+      } else {
+        setValidationStatus(field, `再试一次${field.kind === "handwriting" ? "，可以再写" : ""}`, "error");
+        field.checkButton.disabled = false;
+        if (field.kind === "handwriting") clearCanvas(field.canvas, field.drawState, field.canvas.parentElement.querySelector(".draw-placeholder"));
+        else field.input.select();
+      }
+    }
+    maybeFinishValidation();
+  } catch (error) {
+    console.error("Kana OCR failed", error);
+    setValidationStatus(field, "识别模型加载失败，请重试", "error");
+    field.checkButton.disabled = false;
+  } finally {
+    current.validation.busy = false;
+  }
+}
+
+function updateOcrStatus(field) {
+  return (message) => {
+    const percent = message.progress ? ` ${Math.round(message.progress * 100)}%` : "";
+    if (message.status === "loading language traineddata") setValidationStatus(field, `下载日语模型…${percent}`, "busy");
+    else if (message.status === "recognizing text") setValidationStatus(field, `识别中…${percent}`, "busy");
+  };
+}
+
+function updateValidationAttempts(field) {
+  const row = field.checkButton.closest(".validation-field");
+  const attempts = row.querySelector(".validation-attempts");
+  attempts.textContent = `${field.attempts} / ${field.kind === "handwriting" ? MAX_HANDWRITING_ATTEMPTS : MAX_ROMAJI_ATTEMPTS}`;
+}
+
+function setValidationStatus(field, text, state) {
+  field.statusNode.textContent = text;
+  field.statusNode.className = `validation-status ${state}`;
+}
+
+function lockValidationField(field) {
+  field.checkButton.disabled = true;
+  if (field.input) field.input.disabled = true;
+  if (field.canvas) {
+    field.canvas.classList.add("is-locked");
+    field.canvas.style.pointerEvents = "none";
+  }
+  field.checkButton.closest(".validation-field").classList.add(`is-${field.status}`);
+}
+
+function maybeFinishValidation() {
+  const fields = Object.values(current.validation.fields);
+  if (fields.every((field) => field.status !== "pending")) {
+    finishValidation(current.validation.hadMistake ? "forgot" : "known");
+  }
+}
+
+function finishValidation(result) {
+  if (!current || transitionLocked) return;
+  answer(result);
 }
 
 function makeButton(label, className, onClick, shortcut) {
@@ -346,6 +635,7 @@ function openDataModal() {
 function bindEvents() {
   elements.knownButton.addEventListener("click", () => answer("known"));
   elements.forgotButton.addEventListener("click", () => answer("forgot"));
+  elements.validationMode.addEventListener("change", toggleValidationMode);
 
   document.querySelector("#continue-button").addEventListener("click", () => closeModal(elements.milestoneModal));
   document.querySelector("#finish-button").addEventListener("click", () => {
@@ -384,6 +674,14 @@ function bindEvents() {
         if (!elements.milestoneModal.hidden) closeModal(elements.milestoneModal);
         if (!elements.summaryModal.hidden) closeModal(elements.summaryModal);
         if (!elements.dataModal.hidden) closeModal(elements.dataModal);
+      }
+      return;
+    }
+
+    if (elements.validationMode.checked) {
+      if (event.key === "Enter" && event.target.closest(".validation-field")) {
+        event.preventDefault();
+        event.target.closest(".validation-field").querySelector(".button-check")?.click();
       }
       return;
     }

@@ -21,6 +21,15 @@
           </span>
         </a>
 
+        <label class="mode-switch" for="validation-mode">
+          <input id="validation-mode" type="checkbox" />
+          <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+          <span class="mode-switch-copy">
+            <strong>校验模式</strong>
+            <small>写出来再判定</small>
+          </span>
+        </label>
+
         <div class="header-stats" aria-label="今日概览">
           <span class="stat-chip">
             <span>今日</span>
@@ -63,8 +72,9 @@
           </div>
 
           <div class="action-area">
+            <div class="validation-area" id="validation-area" hidden></div>
             <div class="reveal-actions" id="reveal-actions"></div>
-            <div class="judgement-actions">
+            <div class="judgement-actions" id="judgement-actions">
               <button class="button button-forgot" id="forgot-button" type="button">
                 <span class="button-icon" aria-hidden="true">×</span>
                 <span>我忘了！</span>

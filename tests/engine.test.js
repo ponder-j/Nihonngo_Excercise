@@ -12,6 +12,11 @@ import {
   updateWeight,
 } from "../src/engine.js";
 import { KANA_IDS, kanaItems } from "../src/kana.js";
+import {
+  getValidationFields,
+  matchesValidationAnswer,
+  normalizeRomaji,
+} from "../src/validation.js";
 
 test("kana set contains 71 unique entries", () => {
   assert.equal(kanaItems.length, 71);
@@ -84,4 +89,30 @@ test("weak items and mastery reflect progress", () => {
 test("prompt picker returns an allowed mode", () => {
   assert.deepEqual(pickPrompt(() => 0.1), { direction: "kanaToRomaji", script: "hiragana" });
   assert.deepEqual(pickPrompt(() => 0.9), { direction: "romajiToKana", script: "katakana" });
+});
+
+test("validation fields require the complementary script and romaji", () => {
+  const item = kanaItems.find((entry) => entry.id === "ka");
+  assert.deepEqual(
+    getValidationFields({ direction: "romajiToKana", script: "hiragana" }, item).map(({ id, kind, expected }) => ({ id, kind, expected })),
+    [
+      { id: "hiragana", kind: "handwriting", expected: "か" },
+      { id: "katakana", kind: "handwriting", expected: "カ" },
+    ],
+  );
+  assert.deepEqual(
+    getValidationFields({ direction: "kanaToRomaji", script: "hiragana" }, item).map(({ id, kind, expected }) => ({ id, kind, expected })),
+    [
+      { id: "katakana", kind: "handwriting", expected: "カ" },
+      { id: "romaji", kind: "romaji", expected: "ka" },
+    ],
+  );
+});
+
+test("validation normalizes keyboard input but keeps distinct romaji", () => {
+  assert.equal(normalizeRomaji("  ZU  "), "zu");
+  assert.equal(normalizeRomaji("づ"), "づ");
+  const item = kanaItems.find((entry) => entry.id === "du");
+  assert.equal(matchesValidationAnswer("du", { kind: "romaji", expected: item.romaji }), true);
+  assert.equal(matchesValidationAnswer("zu", { kind: "romaji", expected: item.romaji }), false);
 });
