@@ -1,6 +1,6 @@
 import "./styles.css";
 import { KANA_BY_ID } from "./kana.js";
-import { recognizeKana } from "./ocr.js";
+import { getOcrApiUrl, recognizeKana } from "./ocr.js";
 import {
   getDailyStats,
   getMasteredCount,
@@ -357,11 +357,33 @@ async function submitValidationField(field) {
     maybeFinishValidation();
   } catch (error) {
     console.error("Kana OCR failed", error);
-    setValidationStatus(field, "识别模型加载失败，请重试", "error");
+    setValidationStatus(field, describeOcrError(error), "error");
     field.checkButton.disabled = false;
   } finally {
     current.validation.busy = false;
   }
+}
+
+function describeOcrError(error) {
+  if (error?.code === "network") {
+    return "无法连接 OCR 服务，请检查网络后重试";
+  }
+  if (error?.code === "timeout") {
+    return "OCR 服务响应超时，请稍后重试";
+  }
+  if (error?.status === 413) {
+    return "笔迹图片过大，请清空后重写";
+  }
+  if (error?.status === 429) {
+    return "OCR 服务正忙，请稍后重试";
+  }
+  if (error?.status >= 500) {
+    return "OCR 服务暂时不可用，请稍后重试";
+  }
+  if (getOcrApiUrl().includes("127.0.0.1") || getOcrApiUrl().includes("localhost")) {
+    return "当前页面未连接远程 OCR，请刷新页面后重试";
+  }
+  return "OCR 服务异常，请稍后重试";
 }
 
 function updateOcrStatus(field) {
