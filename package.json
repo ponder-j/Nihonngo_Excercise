@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "node --test",
     "start": "node server.mjs",
+    "ocr-server": "node ocr-server.mjs",
     "service:install": "node scripts/install-service.mjs",
     "service:uninstall": "node scripts/uninstall-service.mjs"
   },
