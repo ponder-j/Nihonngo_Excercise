@@ -1,0 +1,19 @@
+[Unit]
+Description=かな Loop OCR service
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ponder/kana-loop-ocr/app
+EnvironmentFile=-/home/ponder/kana-loop-ocr/ocr.env
+ExecStart=/home/ponder/.local/node-v22.20.0-linux-x64/bin/node /home/ponder/kana-loop-ocr/app/ocr-server.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
