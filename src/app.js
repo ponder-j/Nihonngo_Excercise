@@ -348,7 +348,7 @@ async function submitValidationField(field) {
         setValidationStatus(field, `不对，答案是 ${field.expected}`, "error");
         lockValidationField(field);
       } else {
-        setValidationStatus(field, `再试一次${field.kind === "handwriting" ? "，可以再写" : ""}`, "error");
+        setValidationStatus(field, "没识别对，再试一次", "error");
         field.checkButton.disabled = false;
         if (field.kind === "handwriting") clearCanvas(field.canvas, field.drawState, field.canvas.parentElement.querySelector(".draw-placeholder"));
         else field.input.select();
