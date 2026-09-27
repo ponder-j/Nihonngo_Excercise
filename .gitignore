@@ -3,3 +3,6 @@ dist/
 .DS_Store
 .npm-cache/
 ocr-models/
+.venv/
+__pycache__/
+*.pyc

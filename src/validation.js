@@ -36,5 +36,9 @@ export function normalizeKana(value) {
 
 export function matchesValidationAnswer(value, field) {
   const normalized = field.kind === "romaji" ? normalizeRomaji(value) : normalizeKana(value);
-  return normalized === field.expected;
+  if (normalized === field.expected) return true;
+  if (field.kind !== "handwriting") return false;
+  if (normalized.length !== 1) return false;
+  const identicalGlyphs = ["へヘ", "べベ", "ぺペ"];
+  return identicalGlyphs.some((pair) => pair.includes(normalized) && pair.includes(field.expected));
 }

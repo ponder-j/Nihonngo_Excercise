@@ -58,7 +58,19 @@ GitHub Pages 地址：
 
 校验模式需要 OCR 服务。前端通过构建时的 `VITE_OCR_API_URL` 指向它；未配置时，本地开发默认使用 `http://127.0.0.1:8124`。
 
-本地启动：
+本机 PaddleOCR 测试（Windows PowerShell，Python 3.12）：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r paddle-ocr-requirements.txt
+.\.venv\Scripts\python.exe paddle-ocr-server.py
+```
+
+首次启动会下载 `PP-OCRv5_server_rec` 模型；看到 `listening on http://127.0.0.1:8124` 后，在另一个终端执行 `npm install`、`npm run dev`，打开本地网页的校验模式。`http://127.0.0.1:8124/healthz` 可检查服务。PaddleOCR 服务与原来的 Tesseract.js 服务使用同一个端口，不要同时启动。可用 `OCR_MODEL_NAME` 环境变量切换 PaddleOCR 的文字识别模型。
+
+后端会从画布中裁出笔迹，以单字识别模型推理，并把常见的同形汉字或符号归一化为假名。响应中的 `rawText` 保留模型原始输出，识别失败时网页会显示它，便于判断是识别问题还是连接问题。单字「エ/ユ」等仍可能混淆。
+
+原 Tesseract.js 服务启动方式：
 
 ```bash
 npm run ocr-server

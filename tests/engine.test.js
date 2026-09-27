@@ -116,3 +116,12 @@ test("validation normalizes keyboard input but keeps distinct romaji", () => {
   assert.equal(matchesValidationAnswer("du", { kind: "romaji", expected: item.romaji }), true);
   assert.equal(matchesValidationAnswer("zu", { kind: "romaji", expected: item.romaji }), false);
 });
+
+test("handwriting accepts kana with visually identical hiragana and katakana glyphs", () => {
+  assert.equal(matchesValidationAnswer("へ", { kind: "handwriting", expected: "ヘ" }), true);
+  assert.equal(matchesValidationAnswer("ベ", { kind: "handwriting", expected: "べ" }), true);
+  assert.equal(matchesValidationAnswer("ぺ", { kind: "handwriting", expected: "ペ" }), true);
+  assert.equal(matchesValidationAnswer("", { kind: "handwriting", expected: "ヘ" }), false);
+  assert.equal(matchesValidationAnswer("へべ", { kind: "handwriting", expected: "ヘ" }), false);
+  assert.equal(matchesValidationAnswer("く", { kind: "handwriting", expected: "ヘ" }), false);
+});

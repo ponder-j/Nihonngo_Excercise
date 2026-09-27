@@ -98,17 +98,14 @@ function createValidationState(prompt, item) {
 function renderQuestion() {
   const { item, direction, script } = current;
   const kana = script === "hiragana" ? item.hiragana : item.katakana;
+  const validationMode = elements.validationMode.checked;
 
   elements.answerPanel.hidden = true;
   elements.answerPanel.classList.remove("is-visible");
   elements.practiceCard.classList.remove("is-revealed", "is-forgot", "is-known");
-  elements.validationArea.hidden = !elements.validationMode.checked;
-  elements.revealActions.hidden = elements.validationMode.checked;
-  elements.judgementActions.hidden = elements.validationMode.checked;
-  if (elements.validationMode.checked) {
-    renderValidationArea();
-    return;
-  }
+  elements.validationArea.hidden = !validationMode;
+  elements.revealActions.hidden = validationMode;
+  elements.judgementActions.hidden = validationMode;
 
   elements.validationArea.replaceChildren();
   elements.revealActions.classList.toggle("has-two-actions", direction === "romajiToKana");
@@ -121,13 +118,17 @@ function renderQuestion() {
     elements.prompt.textContent = kana;
     elements.prompt.lang = "ja";
     elements.prompt.classList.remove("is-romaji");
-    elements.promptHint.textContent = "先在心里读出来，再决定要不要显示答案。";
+    elements.promptHint.textContent = validationMode
+      ? "在下方写出另一种假名，并输入罗马音。"
+      : "先在心里读出来，再决定要不要显示答案。";
     elements.answerLabel.textContent = "罗马音";
     elements.answerValue.textContent = item.romaji;
     elements.answerDetail.textContent = `${item.hiragana} · ${item.katakana}`;
-    elements.revealActions.append(
-      makeButton("显示罗马音", "button-reveal", (event) => revealAnswer(undefined, event.currentTarget), "space"),
-    );
+    if (!validationMode) {
+      elements.revealActions.append(
+        makeButton("显示罗马音", "button-reveal", (event) => revealAnswer(undefined, event.currentTarget), "space"),
+      );
+    }
   } else {
     elements.modeLabel.textContent = "看罗马音，回忆两种假名";
     elements.scriptTag.textContent = "罗马音";
@@ -135,22 +136,27 @@ function renderQuestion() {
     elements.prompt.textContent = item.romaji;
     elements.prompt.lang = "en";
     elements.prompt.classList.add("is-romaji");
-    elements.promptHint.textContent = "在脑中写出两种写法，再显示答案。";
+    elements.promptHint.textContent = validationMode
+      ? "在下方写出平假名和片假名。"
+      : "在脑中写出两种写法，再显示答案。";
     elements.answerLabel.textContent = "假名";
     elements.answerValue.textContent = `${item.hiragana}　${item.katakana}`;
     elements.answerDetail.textContent = `平假名 ${item.hiragana} · 片假名 ${item.katakana}`;
-    elements.revealActions.append(
-      makeButton("显示平假名", "button-reveal", (event) => revealAnswer("hiragana", event.currentTarget), "space"),
-    );
-    elements.revealActions.append(
-      makeButton("显示片假名", "button-reveal secondary-reveal", (event) => revealAnswer("katakana", event.currentTarget), "space"),
-    );
+    if (!validationMode) {
+      elements.revealActions.append(
+        makeButton("显示平假名", "button-reveal", (event) => revealAnswer("hiragana", event.currentTarget), "space"),
+      );
+      elements.revealActions.append(
+        makeButton("显示片假名", "button-reveal secondary-reveal", (event) => revealAnswer("katakana", event.currentTarget), "space"),
+      );
+    }
   }
 
   elements.knownButton.disabled = false;
   elements.forgotButton.disabled = false;
   elements.knownButton.classList.remove("pulse");
   elements.forgotButton.classList.remove("pulse");
+  if (validationMode) renderValidationArea();
 }
 
 function renderValidationArea() {
@@ -326,14 +332,19 @@ async function submitValidationField(field) {
     return;
   }
 
-  current.validation.busy = true;
+  const question = current;
+  const validation = question.validation;
+  validation.busy = true;
   field.checkButton.disabled = true;
   setValidationStatus(field, field.kind === "handwriting" ? "正在识别…" : "正在检查…", "busy");
 
   try {
-    const value = field.kind === "handwriting"
-      ? (await recognizeKana(field.canvas, updateOcrStatus(field))).text
-      : field.input.value;
+    const ocrResult = field.kind === "handwriting"
+      ? await recognizeKana(field.canvas, updateOcrStatus(field))
+      : null;
+    if (current !== question || current.validation !== validation || !elements.validationMode.checked) return;
+    const value = ocrResult ? ocrResult.text : field.input.value;
+    const recognized = ocrResult ? `识别为「${ocrResult.rawText?.trim() || "空白"}」，` : "";
     field.attempts += 1;
     updateValidationAttempts(field);
     const correct = matchesValidationAnswer(value, field);
@@ -345,10 +356,10 @@ async function submitValidationField(field) {
       current.validation.hadMistake = true;
       if (field.attempts >= (field.kind === "handwriting" ? MAX_HANDWRITING_ATTEMPTS : MAX_ROMAJI_ATTEMPTS)) {
         field.status = "failed";
-        setValidationStatus(field, `不对，答案是 ${field.expected}`, "error");
+        setValidationStatus(field, `${recognized}不对，答案是 ${field.expected}`, "error");
         lockValidationField(field);
       } else {
-        setValidationStatus(field, "没识别对，再试一次", "error");
+        setValidationStatus(field, `${recognized}再试一次`, "error");
         field.checkButton.disabled = false;
         if (field.kind === "handwriting") clearCanvas(field.canvas, field.drawState, field.canvas.parentElement.querySelector(".draw-placeholder"));
         else field.input.select();
@@ -356,11 +367,12 @@ async function submitValidationField(field) {
     }
     maybeFinishValidation();
   } catch (error) {
+    if (current !== question || current.validation !== validation || !elements.validationMode.checked) return;
     console.error("Kana OCR failed", error);
     setValidationStatus(field, describeOcrError(error), "error");
     field.checkButton.disabled = false;
   } finally {
-    current.validation.busy = false;
+    validation.busy = false;
   }
 }
 

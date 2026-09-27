@@ -21,8 +21,9 @@ let workerPromise;
 let activeJob = false;
 
 function cleanResult(text) {
-  return String(text ?? "")
-    .normalize("NFKC")
+  const normalized = String(text ?? "").normalize("NFKC").trim();
+  if (normalized === "七") return "セ";
+  return normalized
     .replace(/[^\u3040-\u30ff]/g, "")
     .trim();
 }
