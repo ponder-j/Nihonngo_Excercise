@@ -1,5 +1,4 @@
 import "./styles.css";
-import { KANA_BY_ID } from "./kana.js";
 import { getOcrApiUrl, recognizeKana } from "./ocr.js";
 import {
   getDailyStats,
@@ -10,7 +9,10 @@ import {
   pickPrompt,
   recordAnswer,
 } from "./engine.js";
-import { clearProgress, loadProgress, saveProgress } from "./store.js";
+import { clearProgress, loadActiveUnit, loadProgress, loadUnits, saveActiveUnit, saveProgress } from "./store.js";
+import { getUnitItems } from "./units.js";
+import { createUnitManager } from "./unit-manager.js";
+import { confirmAction } from "./confirm.js";
 import {
   getValidationFields,
   matchesValidationAnswer,
@@ -19,6 +21,14 @@ import {
 } from "./validation.js";
 
 const elements = {
+  practicePage: document.querySelector("#practice-page"),
+  managePage: document.querySelector("#manage-page"),
+  unitSelect: document.querySelector("#unit-select"),
+  unitSize: document.querySelector("#unit-size"),
+  questionLabel: document.querySelector("#question-label"),
+  emptyUnitButton: document.querySelector("#empty-unit-button"),
+  keyboardHint: document.querySelector("#practice-keyboard-hint"),
+  validationSwitch: document.querySelector("#validation-switch"),
   practiceCard: document.querySelector("#practice-card"),
   validationMode: document.querySelector("#validation-mode"),
   modeLabel: document.querySelector("#mode-label"),
@@ -63,17 +73,100 @@ const elements = {
 
 const QUESTIONS_PER_MILESTONE = 50;
 
-let progress = loadProgress();
+let units = loadUnits();
+let activeUnit = units.find((unit) => unit.id === loadActiveUnit()) || units[0];
+let progress = loadProgress(activeUnit.id, getUnitItems(activeUnit).map((item) => item.id));
 let current = null;
+let currentPage = "practice";
+let questionTimer = null;
 let sessionCount = 0;
 let transitionLocked = false;
 let milestoneShownFor = null;
 
+const unitManager = createUnitManager({
+  getUnits: () => units,
+  onChange: (nextUnits, selectedId) => {
+    units = nextUnits;
+    selectUnit(selectedId);
+  },
+  onPractice: (unitId) => {
+    selectUnit(unitId);
+    showPage("practice");
+  },
+  showToast,
+});
+
+function activeItems() {
+  return getUnitItems(activeUnit);
+}
+
+function isValidationMode() {
+  return activeUnit.kind === "kana" && elements.validationMode.checked;
+}
+
+function renderUnitPicker() {
+  elements.unitSelect.replaceChildren();
+  units.forEach((unit) => {
+    const option = document.createElement("option");
+    option.value = unit.id;
+    option.textContent = unit.name;
+    elements.unitSelect.append(option);
+  });
+  elements.unitSelect.value = activeUnit.id;
+  elements.unitSize.textContent = `${activeItems().length} 个${activeUnit.kind === "kana" ? "假名" : "单词"}`;
+  elements.validationSwitch.hidden = currentPage !== "practice" || activeUnit.kind !== "kana";
+  document.querySelector("#weak-title").textContent = activeUnit.kind === "kana" ? "薄弱假名" : "薄弱单词";
+}
+
+function cancelQuestionTransition() {
+  window.clearTimeout(questionTimer);
+  transitionLocked = false;
+  current = null;
+  elements.feedbackFlash.className = "feedback-flash";
+}
+
+function selectUnit(unitId) {
+  cancelQuestionTransition();
+  activeUnit = units.find((unit) => unit.id === unitId) || units[0];
+  saveActiveUnit(activeUnit.id);
+  progress = loadProgress(activeUnit.id, activeItems().map((item) => item.id));
+  sessionCount = 0;
+  milestoneShownFor = null;
+  elements.sessionCount.textContent = "0";
+  renderUnitPicker();
+  renderStats();
+  if (currentPage === "practice") nextQuestion();
+}
+
+async function showPage(page) {
+  if (currentPage === "manage" && page === "practice" && !(await unitManager.canLeave())) return;
+  cancelQuestionTransition();
+  currentPage = page;
+  elements.practicePage.hidden = page !== "practice";
+  elements.managePage.hidden = page !== "manage";
+  ["practice", "manage"].forEach((name) => {
+    const button = document.querySelector(`#${name}-nav`);
+    button.classList.toggle("is-active", page === name);
+    if (page === name) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+  elements.validationSwitch.hidden = page !== "practice" || activeUnit.kind !== "kana";
+  if (page === "manage") unitManager.open(activeUnit.id);
+  else nextQuestion();
+}
+
 function nextQuestion() {
-  const id = pickNextItem(progress);
-  const item = KANA_BY_ID[id];
-  const prompt = pickPrompt();
-  current = { item, ...prompt, validation: createValidationState(prompt, item) };
+  const items = activeItems();
+  const id = pickNextItem(progress, Math.random, items.map((item) => item.id));
+  const item = items.find((entry) => entry.id === id);
+  if (!item) {
+    current = null;
+  } else if (activeUnit.kind === "kana") {
+    const prompt = pickPrompt();
+    current = { item, ...prompt, validation: createValidationState(prompt, item) };
+  } else {
+    current = { item, direction: "meaningToJapanese" };
+  }
   renderQuestion();
 }
 
@@ -96,9 +189,14 @@ function createValidationState(prompt, item) {
 }
 
 function renderQuestion() {
-  const { item, direction, script } = current;
-  const kana = script === "hiragana" ? item.hiragana : item.katakana;
-  const validationMode = elements.validationMode.checked;
+  const validationMode = isValidationMode();
+  const vocabularyMode = activeUnit.kind === "vocabulary";
+  elements.questionLabel.textContent = activeUnit.name;
+  elements.prompt.classList.toggle("is-vocabulary", vocabularyMode);
+  elements.prompt.classList.remove("is-empty");
+  elements.answerPanel.classList.toggle("vocabulary-answer", vocabularyMode);
+  elements.emptyUnitButton.hidden = Boolean(current);
+  elements.keyboardHint.hidden = !current;
 
   elements.answerPanel.hidden = true;
   elements.answerPanel.classList.remove("is-visible");
@@ -108,10 +206,41 @@ function renderQuestion() {
   elements.judgementActions.hidden = validationMode;
 
   elements.validationArea.replaceChildren();
-  elements.revealActions.classList.toggle("has-two-actions", direction === "romajiToKana");
   elements.revealActions.replaceChildren();
+  elements.revealActions.classList.remove("has-two-actions");
 
-  if (direction === "kanaToRomaji") {
+  if (!current) {
+    elements.modeLabel.textContent = "先添加词库，再开始练习";
+    elements.scriptTag.textContent = "空词库";
+    elements.scriptTag.lang = "zh-CN";
+    elements.prompt.textContent = "这个单元还没有单词";
+    elements.prompt.lang = "zh-CN";
+    elements.prompt.classList.remove("is-romaji");
+    elements.prompt.classList.add("is-empty");
+    elements.promptHint.textContent = "进入管理页面，添加日文、假名拼写、声调和中文释义。";
+    elements.validationArea.hidden = true;
+    elements.revealActions.hidden = true;
+    elements.judgementActions.hidden = true;
+    return;
+  }
+
+  const { item, direction, script } = current;
+  const kana = script === "hiragana" ? item.hiragana : item.katakana;
+  elements.revealActions.classList.toggle("has-two-actions", direction === "romajiToKana");
+
+  if (vocabularyMode) {
+    elements.modeLabel.textContent = "看中文释义，回忆日文单词";
+    elements.scriptTag.textContent = "中文释义";
+    elements.scriptTag.lang = "zh-CN";
+    elements.prompt.textContent = item.meaning;
+    elements.prompt.lang = "zh-CN";
+    elements.prompt.classList.remove("is-romaji");
+    elements.promptHint.textContent = "想一想日文写法、读音和声调，再查看答案。";
+    elements.answerLabel.textContent = "日文答案";
+    elements.answerValue.textContent = item.japanese;
+    elements.answerDetail.textContent = `假名：${item.kana}　·　声调：${item.accent} 型`;
+    elements.revealActions.append(makeButton("查看答案", "button-reveal", (event) => revealAnswer(undefined, event.currentTarget), "space"));
+  } else if (direction === "kanaToRomaji") {
     elements.modeLabel.textContent = "看假名，回忆罗马音";
     elements.scriptTag.textContent = script === "hiragana" ? "平假名" : "片假名";
     elements.scriptTag.lang = "zh-CN";
@@ -188,6 +317,7 @@ function renderValidationArea() {
 }
 
 function toggleValidationMode() {
+  if (!current || activeUnit.kind !== "kana") return;
   if (elements.validationMode.checked) {
     current.validation = createValidationState(current, current.item);
   }
@@ -489,20 +619,20 @@ function revealAnswer(kanaOnly, clickedButton) {
 }
 
 function answer(result) {
-  if (!current || transitionLocked) return;
+  if (!current || transitionLocked || currentPage !== "practice") return;
   transitionLocked = true;
   elements.practiceCard.classList.add(result === "known" ? "is-known" : "is-forgot");
   elements.knownButton.disabled = true;
   elements.forgotButton.disabled = true;
 
   progress = recordAnswer(progress, current.item.id, result);
-  saveProgress(progress);
+  if (!saveProgress(progress, activeUnit.id)) showToast("练习记录暂未保存，浏览器存储不可用");
   sessionCount += 1;
   elements.sessionCount.textContent = sessionCount;
   renderStats();
   showFeedback(result, current.item);
 
-  window.setTimeout(() => {
+  questionTimer = window.setTimeout(() => {
     transitionLocked = false;
     nextQuestion();
   }, 260);
@@ -512,9 +642,10 @@ function answer(result) {
 }
 
 function showFeedback(result, item) {
+  const label = item.japanese || item.hiragana;
   elements.feedbackFlash.textContent = result === "known"
-    ? `记住了 ${item.hiragana} · 出现概率已调低`
-    : `${item.hiragana} 已记下 · 下次会更常出现`;
+    ? `记住了 ${label} · 出现概率已调低`
+    : `${label} 已记下 · 下次会更常出现`;
   elements.feedbackFlash.className = `feedback-flash show ${result}`;
   window.clearTimeout(showFeedback.timer);
   showFeedback.timer = window.setTimeout(() => {
@@ -583,25 +714,35 @@ function renderWeekChart() {
 }
 
 function renderWeakList() {
-  const weak = getWeakItems(progress, 5);
+  const items = activeItems();
+  const weak = getWeakItems(progress, 5, items.map((item) => item.id));
   elements.weakList.replaceChildren();
   if (!weak.length) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = "练习几题后，这里会标出需要多看的假名。";
+    empty.textContent = `练习几题后，这里会标出需要多看的${activeUnit.kind === "kana" ? "假名" : "单词"}。`;
     elements.weakList.append(empty);
     return;
   }
 
   weak.forEach((entry, index) => {
-    const item = KANA_BY_ID[entry.id];
+    const item = items.find((candidate) => candidate.id === entry.id);
     const row = document.createElement("div");
     row.className = "weak-row";
-    row.innerHTML = `
-      <span class="weak-rank">${String(index + 1).padStart(2, "0")}</span>
-      <span class="weak-kana"><strong>${item.hiragana} · ${item.katakana}</strong><small>${item.romaji}</small></span>
-      <span class="weak-count">忘 ${entry.forgot}<br>对 ${entry.known}</span>
-    `;
+    const rank = document.createElement("span");
+    rank.className = "weak-rank";
+    rank.textContent = String(index + 1).padStart(2, "0");
+    const copy = document.createElement("span");
+    copy.className = "weak-kana";
+    const label = document.createElement("strong");
+    label.textContent = activeUnit.kind === "kana" ? `${item.hiragana} · ${item.katakana}` : item.japanese;
+    const detail = document.createElement("small");
+    detail.textContent = activeUnit.kind === "kana" ? item.romaji : `${item.kana} · ${item.accent} 型 · ${item.meaning}`;
+    copy.append(label, detail);
+    const counts = document.createElement("span");
+    counts.className = "weak-count";
+    counts.textContent = `忘 ${entry.forgot}\n对 ${entry.known}`;
+    row.append(rank, copy, counts);
     elements.weakList.append(row);
   });
 }
@@ -612,7 +753,10 @@ function renderDataModal() {
     .slice(0, 14);
   elements.dataTotal.textContent = progress.totalAnswered;
   elements.dataForgot.textContent = progress.totalForgot;
-  elements.dataMastered.textContent = `${getMasteredCount(progress)}`;
+  elements.dataMastered.textContent = `${getMasteredCount(progress, activeItems().map((item) => item.id))}`;
+  document.querySelector("#data-unit-name").textContent = activeUnit.name;
+  document.querySelector("#data-mastered-label").textContent = activeUnit.kind === "kana" ? "掌握假名" : "掌握单词";
+  document.querySelector("#data-item-total").textContent = `/ ${activeItems().length}`;
   elements.dataTableBody.replaceChildren();
 
   if (!days.length) {
@@ -667,6 +811,15 @@ function openDataModal() {
 }
 
 function bindEvents() {
+  document.querySelector("#practice-nav").addEventListener("click", () => {
+    if (currentPage !== "practice") showPage("practice");
+  });
+  document.querySelector("#manage-nav").addEventListener("click", () => {
+    if (currentPage !== "manage") showPage("manage");
+  });
+  document.querySelector("#edit-current-unit").addEventListener("click", () => showPage("manage"));
+  elements.emptyUnitButton.addEventListener("click", () => showPage("manage"));
+  elements.unitSelect.addEventListener("change", () => selectUnit(elements.unitSelect.value));
   elements.knownButton.addEventListener("click", () => answer("known"));
   elements.forgotButton.addEventListener("click", () => answer("forgot"));
   elements.validationMode.addEventListener("change", toggleValidationMode);
@@ -684,14 +837,18 @@ function bindEvents() {
   document.querySelector("#open-data-button").addEventListener("click", openDataModal);
   document.querySelector("#close-data-button").addEventListener("click", () => closeModal(elements.dataModal));
   document.querySelector("#close-data-footer-button").addEventListener("click", () => closeModal(elements.dataModal));
-  document.querySelector("#reset-data-button").addEventListener("click", () => {
-    if (!window.confirm("确定要清除全部练习记录和概率数据吗？此操作无法撤销。")) return;
-    clearProgress();
-    progress = loadProgress();
+  document.querySelector("#reset-data-button").addEventListener("click", async () => {
+    if (!(await confirmAction(`清除「${activeUnit.name}」的练习记录和概率数据后无法恢复。课程词库会保留。`, { title: "清除当前单元记录？", confirmLabel: "清除记录" }))) return;
+    if (!clearProgress(activeUnit.id)) return showToast("清除失败，请检查浏览器存储后重试");
+    progress = loadProgress(activeUnit.id, activeItems().map((item) => item.id));
     sessionCount = 0;
     milestoneShownFor = null;
     elements.sessionCount.textContent = "0";
     renderStats();
+    if (currentPage === "practice") {
+      cancelQuestionTransition();
+      nextQuestion();
+    }
     closeModal(elements.dataModal);
     showToast("学习数据已清除");
   });
@@ -703,6 +860,8 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.isComposing || event.keyCode === 229 || event.defaultPrevented || event.repeat) return;
+    if (document.querySelector("#confirm-dialog").open) return;
     if (elements.milestoneModal.hidden === false || elements.summaryModal.hidden === false || elements.dataModal.hidden === false) {
       if (event.key === "Escape") {
         if (!elements.milestoneModal.hidden) closeModal(elements.milestoneModal);
@@ -712,13 +871,16 @@ function bindEvents() {
       return;
     }
 
-    if (elements.validationMode.checked) {
+    if (currentPage !== "practice") return;
+    if (isValidationMode()) {
       if (event.key === "Enter" && event.target.closest(".validation-field")) {
         event.preventDefault();
         event.target.closest(".validation-field").querySelector(".button-check")?.click();
       }
       return;
     }
+
+    if (event.target.closest("input, textarea, select, button, a, summary, [contenteditable]")) return;
 
     if (event.code === "Space") {
       event.preventDefault();
@@ -733,7 +895,7 @@ function bindEvents() {
 
   document.querySelector(".brand").addEventListener("click", (event) => {
     event.preventDefault();
-    nextQuestion();
+    showPage("practice");
   });
 }
 
@@ -745,5 +907,6 @@ function showToast(message) {
 }
 
 bindEvents();
+renderUnitPicker();
 renderStats();
 nextQuestion();

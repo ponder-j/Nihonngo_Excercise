@@ -26,7 +26,7 @@ export function createInitialProgress() {
   };
 }
 
-export function normalizeProgress(value) {
+export function normalizeProgress(value, itemIds = KANA_IDS) {
   const initial = createInitialProgress();
   if (!value || typeof value !== "object" || value.version !== APP_VERSION) return initial;
 
@@ -34,7 +34,7 @@ export function normalizeProgress(value) {
     ...initial,
     weights: value.weights && typeof value.weights === "object" ? value.weights : {},
     daily: value.daily && typeof value.daily === "object" ? value.daily : {},
-    recent: Array.isArray(value.recent) ? value.recent.filter((id) => KANA_IDS.includes(id)) : [],
+    recent: Array.isArray(value.recent) ? value.recent.filter((id) => itemIds.includes(id)) : [],
     totalAnswered: Number(value.totalAnswered) || 0,
     totalForgot: Number(value.totalForgot) || 0,
   };
@@ -64,13 +64,17 @@ export function pickWeighted(ids, getWeight, random = Math.random) {
   return ids[ids.length - 1];
 }
 
-export function pickNextItem(progress, random = Math.random) {
+export function pickNextItem(progress, random = Math.random, itemIds = KANA_IDS) {
+  if (!itemIds.length) return null;
   const recent = new Set(progress.recent ?? []);
+  const candidates = itemIds.length > 1
+    ? itemIds.filter((id) => id !== progress.recent?.[0])
+    : itemIds;
   const adjustedWeight = (id) => {
     const recencyFactor = recent.has(id) ? 0.18 : 1;
     return weightFor(progress, id) * recencyFactor;
   };
-  return pickWeighted(KANA_IDS, adjustedWeight, random);
+  return pickWeighted(candidates, adjustedWeight, random);
 }
 
 export function pickPrompt(random = Math.random) {
@@ -144,8 +148,8 @@ export function getRecentDays(progress, days = 7, today = new Date()) {
   return result;
 }
 
-export function getWeakItems(progress, limit = 5) {
-  return KANA_IDS
+export function getWeakItems(progress, limit = 5, itemIds = KANA_IDS) {
+  return itemIds
     .map((id) => {
       const item = progress.weights?.[id] ?? {};
       return {
@@ -161,8 +165,8 @@ export function getWeakItems(progress, limit = 5) {
     .slice(0, limit);
 }
 
-export function getMasteredCount(progress) {
-  return KANA_IDS.filter((id) => {
+export function getMasteredCount(progress, itemIds = KANA_IDS) {
+  return itemIds.filter((id) => {
     const item = progress.weights?.[id];
     return item?.seen > 0 && weightFor(progress, id) <= 0.55;
   }).length;

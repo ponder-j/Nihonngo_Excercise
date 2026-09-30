@@ -6,9 +6,15 @@
     <meta name="theme-color" content="#f7f1e6" />
     <meta
       name="description"
-      content="可自适应难度的日语假名与罗马音练习工具。数据保存在本机。"
+      content="日语假名与课程单词卡片练习。自建单元和词库，记录学习进度。数据保存在本机。"
     />
-    <title>かな Loop · 日语假名练习</title>
+    <title>かな Loop · 日语单元练习</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Noto+Sans+JP:wght@400;500;600;700;800&amp;family=Noto+Serif+JP:wght@600;700&amp;display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
   </head>
   <body>
     <div class="page-shell">
@@ -17,11 +23,11 @@
           <span class="brand-mark" aria-hidden="true">あ</span>
           <span>
             <strong>かな Loop</strong>
-            <small>每天一点，五十音渐渐熟练</small>
+            <small>从五十音，到每一课的新单词</small>
           </span>
         </a>
 
-        <label class="mode-switch" for="validation-mode">
+        <label class="mode-switch" id="validation-switch" for="validation-mode">
           <input id="validation-mode" type="checkbox" />
           <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
           <span class="mode-switch-copy">
@@ -47,11 +53,23 @@
         </div>
       </header>
 
-      <main class="layout">
+      <nav class="page-nav" aria-label="页面导航">
+        <button class="nav-button is-active" id="practice-nav" type="button" aria-current="page">卡片练习</button>
+        <button class="nav-button" id="manage-nav" type="button">单元与词库管理</button>
+      </nav>
+
+      <main id="practice-page">
+        <section class="unit-picker" aria-label="选择练习单元">
+          <div class="unit-picker-copy"><span class="eyebrow">练习哪一课</span><label for="unit-select">选择单元 / 课程</label></div>
+          <select id="unit-select"></select>
+          <span class="unit-size" id="unit-size">71 个假名</span>
+          <button class="text-button" id="edit-current-unit" type="button">管理词库 ↗</button>
+        </section>
+        <div class="layout">
         <section class="practice-card" id="practice-card" aria-labelledby="question-label">
           <div class="card-topline">
             <div>
-              <span class="eyebrow" id="question-label">今日练习</span>
+              <span class="eyebrow" id="question-label">假名练习单元</span>
               <p class="mode-label" id="mode-label">看假名，回忆罗马音</p>
             </div>
             <div class="question-count" aria-label="本次页面打开后的题数">
@@ -72,6 +90,7 @@
           </div>
 
           <div class="action-area">
+            <button class="button button-primary" id="empty-unit-button" type="button" hidden>添加单词</button>
             <div class="validation-area" id="validation-area" hidden></div>
             <div class="reveal-actions" id="reveal-actions"></div>
             <div class="judgement-actions" id="judgement-actions">
@@ -86,7 +105,7 @@
                 <kbd>2</kbd>
               </button>
             </div>
-            <p class="keyboard-hint">快捷键：<kbd>空格</kbd> 显示答案 · <kbd>1</kbd> 忘记 · <kbd>2</kbd> 知道</p>
+            <p class="keyboard-hint" id="practice-keyboard-hint">快捷键：<kbd>空格</kbd> 显示答案 · <kbd>1</kbd> 忘记 · <kbd>2</kbd> 知道</p>
           </div>
 
           <div class="feedback-flash" id="feedback-flash" aria-live="polite"></div>
@@ -96,7 +115,7 @@
           <section class="panel-section today-section">
             <div class="section-heading">
               <div>
-                <span class="eyebrow">今日进度</span>
+                <span class="eyebrow">当前单元 · 今日进度</span>
                 <h2>一点点，也算数</h2>
               </div>
               <span class="goal-badge" id="goal-badge">0 / 50</span>
@@ -139,7 +158,7 @@
             <summary class="section-heading compact weak-summary">
               <div>
                 <span class="eyebrow">需要留意</span>
-                <h2>薄弱假名</h2>
+                <h2 id="weak-title">薄弱假名</h2>
               </div>
               <span class="weak-toggle">
                 <span class="soft-label">点击展开</span>
@@ -151,6 +170,43 @@
             <div class="weak-list" id="weak-list"></div>
           </details>
         </aside>
+        </div>
+      </main>
+
+      <main id="manage-page" hidden>
+        <div class="manage-heading">
+          <div><span class="eyebrow">我的学习内容</span><h1>单元与词库</h1><p>把每一课的单词，变成随时可以抽查的卡片。</p></div>
+          <button class="button button-primary" id="new-unit-button" type="button">＋ 新建单元</button>
+        </div>
+        <div class="manage-layout">
+          <aside class="unit-library" aria-label="已有单元">
+            <div class="library-heading"><strong>全部单元</strong><span>选择后编辑</span></div>
+            <div id="unit-list" class="unit-list"></div>
+            <p class="library-note">单元、词库和学习记录保存在此浏览器中。</p>
+          </aside>
+          <section class="unit-editor" aria-labelledby="editor-title">
+            <div class="editor-heading">
+              <div><span class="eyebrow">课程词库</span><h2 id="editor-title">编辑课程词库</h2></div>
+              <span class="goal-badge" id="editor-word-count">0 个单词</span>
+            </div>
+            <div id="builtin-unit-info" hidden>
+              <p class="builtin-copy">内置单元包含五十音、浊音和半浊音，支持假名与罗马音双向练习。此单元的内容固定，可通过「新建单元」添加课程词库。</p>
+              <div class="builtin-kana-grid" id="builtin-kana-grid" lang="ja"></div>
+            </div>
+            <form id="unit-form" novalidate>
+              <label class="unit-name-label" for="unit-name">单元 / 课程名称</label>
+              <input class="unit-name-input" id="unit-name" type="text" placeholder="例如：第一课 小李是个中国人" autocomplete="off" />
+              <div class="word-entry-intro"><strong>单词信息</strong><span><kbd>Tab</kbd> 下一栏 · <kbd>Enter</kbd> 确认此行并继续</span></div>
+              <div class="word-table-head" aria-hidden="true"><span>#</span><span>日文（汉字 / 假名）</span><span>假名拼写</span><span>声调类型</span><span>中文释义</span><span></span></div>
+              <div id="word-rows" class="word-rows"></div>
+              <button class="text-button add-word-button" id="add-word-button" type="button">＋ 添加一行单词</button>
+              <p class="word-entry-note">日文有汉字就填汉字，无汉字则填假名。声调填 0、1、2 等数字。回车确认后，点击下方按钮保存整个词库。</p>
+              <div class="editor-save-bar"><span>完成录入后统一保存</span><button class="button button-primary" id="save-unit-button" type="submit">保存单元</button></div>
+            </form>
+            <p class="editor-status" id="editor-status" role="status" aria-live="polite"></p>
+            <div class="editor-footer"><button class="text-button danger-text" id="delete-unit-button" type="button" hidden>删除此单元</button><button class="button button-secondary" id="practice-unit-button" type="button">返回练习此单元 →</button></div>
+          </section>
+        </div>
       </main>
 
       <footer class="site-footer">
@@ -180,7 +236,7 @@
       <section class="modal-card summary-card" role="dialog" aria-modal="true" aria-labelledby="summary-title">
         <span class="eyebrow">今日收工</span>
         <h2 id="summary-title">お疲れさま！</h2>
-        <p>今天的练习已经记下来了。明天再打开，薄弱假名仍会优先出现。</p>
+        <p>今天的练习已经记下来了。明天再打开，薄弱内容仍会优先出现。</p>
         <div class="summary-grid">
           <div><span>今日完成</span><strong id="summary-total">0 题</strong></div>
           <div><span>记住了</span><strong id="summary-known">0 题</strong></div>
@@ -199,13 +255,14 @@
           <div>
             <span class="eyebrow">本地数据</span>
             <h2 id="data-title">学习概况</h2>
+            <p class="data-unit-name" id="data-unit-name"></p>
           </div>
           <button class="modal-close" id="close-data-button" type="button" aria-label="关闭">×</button>
         </div>
         <div class="data-overview">
           <div><span>累计练习</span><strong id="data-total">0</strong><small>题</small></div>
           <div><span>累计忘记</span><strong id="data-forgot">0</strong><small>题</small></div>
-          <div><span>掌握假名</span><strong id="data-mastered">0</strong><small>/ 71</small></div>
+          <div><span id="data-mastered-label">掌握假名</span><strong id="data-mastered">0</strong><small id="data-item-total">/ 71</small></div>
         </div>
         <div class="data-table-wrap">
           <table>
@@ -215,14 +272,23 @@
             <tbody id="data-table-body"></tbody>
           </table>
         </div>
-        <p class="data-note">不断连续答对时，假名出现概率会降低；点“我忘了”后，它会更快回来。</p>
+        <p class="data-note">当前单元独立记录学习进度。答对时出现概率会降低；点“我忘了”后，它会更快回来。</p>
         <div class="modal-actions between">
-          <button class="text-button" id="reset-data-button" type="button">清除全部数据</button>
+          <button class="text-button" id="reset-data-button" type="button">清除当前单元练习记录</button>
           <button class="button button-primary" id="close-data-footer-button" type="button">继续练习</button>
         </div>
       </section>
     </div>
 
+    <dialog class="confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <span class="eyebrow">操作确认</span>
+      <h2 id="confirm-title">确认操作</h2>
+      <p id="confirm-message"></p>
+      <div class="modal-actions">
+        <button class="button button-secondary" id="confirm-cancel" type="button">取消</button>
+        <button class="button button-primary" id="confirm-accept" type="button">确认</button>
+      </div>
+    </dialog>
     <div class="toast" id="toast" aria-live="polite"></div>
     <script type="module" src="/src/app.js"></script>
   </body>
