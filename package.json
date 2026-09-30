@@ -10,6 +10,7 @@
     "test": "node --test",
     "start": "node server.mjs",
     "ocr-server": "node ocr-server.mjs",
+    "vocab:import": "node .agents/skills/nihongo-vocabulary-import/scripts/import-vocabulary.mjs",
     "service:install": "node scripts/install-service.mjs",
     "service:uninstall": "node scripts/uninstall-service.mjs"
   },
@@ -18,6 +19,8 @@
     "vite": "^7.1.7"
   },
   "dependencies": {
+    "lucide": "^1.49.0",
+    "proper-lockfile": "^4.1.2",
     "tesseract.js": "^7.0.0"
   }
 }

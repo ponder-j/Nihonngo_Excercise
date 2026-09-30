@@ -3,7 +3,7 @@ import { KANA_UNIT_ID, WORD_FIELDS, createId, isBlankWord, validateUnit, validat
 import { clearProgress, saveUnits } from "./store.js";
 import { confirmAction } from "./confirm.js";
 
-export function createUnitManager({ getUnits, onChange, onPractice, showToast }) {
+export function createUnitManager({ getUnits, onChange, onPractice, showToast, persistUnits = saveUnits, getImports = () => [], discardImport, savedMessage = "单元和词库已保存" }) {
   const list = document.querySelector("#unit-list");
   const form = document.querySelector("#unit-form");
   const title = document.querySelector("#unit-name");
@@ -13,8 +13,21 @@ export function createUnitManager({ getUnits, onChange, onPractice, showToast })
   const builtIn = document.querySelector("#builtin-unit-info");
   const deleteButton = document.querySelector("#delete-unit-button");
   const practiceButton = document.querySelector("#practice-unit-button");
+  const saveButton = document.querySelector("#save-unit-button");
+  const reviewInfo = document.querySelector("#import-review-info");
   let editingId = KANA_UNIT_ID;
+  let editingImportId = null;
   let dirty = false;
+  let saving = false;
+
+  function setSaving(value) {
+    saving = value;
+    form.inert = value;
+    saveButton.disabled = value;
+    deleteButton.disabled = value;
+    practiceButton.disabled = value;
+    saveButton.textContent = value ? "正在保存…" : editingImportId ? "确认并保存单元" : "保存单元";
+  }
 
   function setStatus(message = "", error = false) {
     status.textContent = message;
@@ -33,6 +46,7 @@ export function createUnitManager({ getUnits, onChange, onPractice, showToast })
   }
 
   async function canLeave() {
+    if (saving) return false;
     if (!dirty) return true;
     if (!(await confirmAction("当前词库有未保存的修改。离开后，这些修改不会保存。", { title: "放弃未保存的修改？", confirmLabel: "放弃修改" }))) return false;
     dirty = false;
@@ -46,20 +60,37 @@ export function createUnitManager({ getUnits, onChange, onPractice, showToast })
       button.type = "button";
       button.className = `unit-list-item${unit.id === editingId ? " is-selected" : ""}`;
       button.setAttribute("aria-current", unit.id === editingId ? "true" : "false");
-      const mark = document.createElement("span");
-      mark.className = "unit-list-mark";
-      mark.textContent = unit.kind === "kana" ? "あ" : "詞";
       const copy = document.createElement("span");
       const name = document.createElement("strong");
       name.textContent = unit.name;
       const detail = document.createElement("small");
       detail.textContent = unit.kind === "kana" ? "内置单元 · 71 个假名" : `${unit.words.length} 个单词`;
       copy.append(name, detail);
-      button.append(mark, copy);
+      button.append(copy);
       button.addEventListener("click", async () => {
         if (unit.id !== editingId && await canLeave()) edit(unit.id);
       });
       list.append(button);
+    });
+    const importList = document.querySelector("#import-list");
+    importList.replaceChildren();
+    const drafts = getImports();
+    document.querySelector("#imports-section").hidden = drafts.length === 0;
+    drafts.forEach((draft) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `unit-list-item${draft.id === editingImportId ? " is-selected" : ""}`;
+      const copy = document.createElement("span");
+      const name = document.createElement("strong");
+      name.textContent = draft.unit.name;
+      const detail = document.createElement("small");
+      detail.textContent = `${draft.unit.words.length} 个单词 · 待审核`;
+      copy.append(name, detail);
+      button.append(copy);
+      button.addEventListener("click", async () => {
+        if (draft.id !== editingImportId && await canLeave()) edit(draft.unit.id, draft.id);
+      });
+      importList.append(button);
     });
   }
 
@@ -158,22 +189,42 @@ export function createUnitManager({ getUnits, onChange, onPractice, showToast })
     updateCount();
   }
 
-  function edit(unitId) {
-    const unit = getUnits().find((entry) => entry.id === unitId);
+  function edit(unitId, importId = null) {
+    const imported = importId ? getImports().find((draft) => draft.id === importId) : null;
+    const unit = imported?.unit || getUnits().find((entry) => entry.id === unitId);
     const isKana = unit?.kind === "kana";
     editingId = unitId;
+    editingImportId = imported?.id || null;
     dirty = false;
     setStatus();
     form.hidden = isKana;
     builtIn.hidden = !isKana;
     deleteButton.hidden = !unit || isKana;
-    practiceButton.hidden = !unit;
-    document.querySelector("#editor-title").textContent = isKana ? "假名练习单元" : unit ? "编辑课程词库" : "添加新单元";
+    practiceButton.hidden = !unit || Boolean(imported);
+    saveButton.textContent = imported ? "确认并保存单元" : "保存单元";
+    document.querySelector("#editor-title").textContent = imported ? "审核导入词库" : isKana ? "假名练习单元" : unit ? "编辑课程词库" : "添加新单元";
+    reviewInfo.hidden = !imported;
+    reviewInfo.replaceChildren();
+    if (imported) {
+      const copy = document.createElement("p");
+      copy.textContent = `请核对后保存。${imported.source ? `来源：${imported.source}` : ""}`;
+      reviewInfo.append(copy);
+      const notes = [...imported.notes, ...imported.issues];
+      if (notes.length) {
+        const items = document.createElement("ul");
+        notes.forEach((note) => {
+          const item = document.createElement("li");
+          item.textContent = `第 ${note.row} 行：${note.message}`;
+          items.append(item);
+        });
+        reviewInfo.append(items);
+      }
+    }
     rows.replaceChildren();
     title.value = unit?.name ?? "";
     title.setCustomValidity("");
     if (!isKana) {
-      (unit?.words ?? []).forEach((word) => appendRow(word, true));
+      (unit?.words ?? []).forEach((word) => appendRow(word, !imported));
       appendRow();
     } else {
       count.textContent = "71 个假名";
@@ -181,7 +232,8 @@ export function createUnitManager({ getUnits, onChange, onPractice, showToast })
     renderList();
   }
 
-  function save() {
+  async function save() {
+    if (saving) return false;
     const draft = { id: editingId, name: title.value, words: [...rows.children].map(readRow) };
     const result = validateUnit(draft);
     if (!result.valid) {
@@ -198,16 +250,22 @@ export function createUnitManager({ getUnits, onChange, onPractice, showToast })
     const units = getUnits();
     const exists = units.some((unit) => unit.id === editingId);
     const next = exists ? units.map((unit) => unit.id === editingId ? result.unit : unit) : [...units, result.unit];
-    if (!saveUnits(next)) {
-      setStatus("保存失败，浏览器存储不可用或空间不足。输入内容仍保留，请重试。", true);
+    setSaving(true);
+    try {
+      const saved = await persistUnits(next, { importId: editingImportId });
+      if (!saved) throw new Error("浏览器存储不可用或空间不足");
+      dirty = false;
+      onChange(Array.isArray(saved) ? saved : next, editingId);
+      edit(editingId);
+      setStatus(`已保存 ${result.unit.words.length} 个单词`);
+      showToast(savedMessage);
+      return true;
+    } catch (error) {
+      setStatus(`保存失败：${error.message}。输入内容仍保留。`, true);
       return false;
+    } finally {
+      setSaving(false);
     }
-    dirty = false;
-    onChange(next, editingId);
-    edit(editingId);
-    setStatus(`已保存 ${result.unit.words.length} 个单词`);
-    showToast("单元和词库已保存");
-    return true;
   }
 
   title.addEventListener("input", () => {
@@ -235,23 +293,41 @@ export function createUnitManager({ getUnits, onChange, onPractice, showToast })
     row.querySelector("input").focus();
   });
   deleteButton.addEventListener("click", async () => {
+    if (saving) return;
+    if (editingImportId) {
+      if (!(await confirmAction("丢弃后将移除这份待审核词库。", { title: "丢弃导入草稿？", confirmLabel: "丢弃草稿" }))) return;
+      setSaving(true);
+      try {
+        const next = await discardImport(editingImportId);
+        dirty = false;
+        onChange(next, KANA_UNIT_ID);
+        edit(KANA_UNIT_ID);
+      } catch (error) { setStatus(error.message, true); }
+      finally { setSaving(false); }
+      return;
+    }
     const unit = getUnits().find((entry) => entry.id === editingId);
     if (!unit || unit.kind === "kana") return;
     if (!(await confirmAction(`删除「${unit.name}」后，该单元的词库和练习记录将无法恢复。`, { title: "删除这个单元？", confirmLabel: "删除单元" }))) return;
     const next = getUnits().filter((entry) => entry.id !== editingId);
-    if (!saveUnits(next)) return setStatus("删除失败，请检查浏览器存储后重试。", true);
-    clearProgress(editingId);
-    dirty = false;
-    onChange(next, KANA_UNIT_ID);
-    edit(KANA_UNIT_ID);
-    showToast("单元已删除");
+    setSaving(true);
+    try {
+      const saved = await persistUnits(next);
+      if (!saved) throw new Error("存储不可用");
+      clearProgress(editingId);
+      dirty = false;
+      onChange(Array.isArray(saved) ? saved : next, KANA_UNIT_ID);
+      edit(KANA_UNIT_ID);
+      showToast("单元已删除");
+    } catch (error) { setStatus(`删除失败：${error.message}`, true); }
+    finally { setSaving(false); }
   });
-  practiceButton.addEventListener("click", () => {
-    if (dirty && !save()) return;
+  practiceButton.addEventListener("click", async () => {
+    if (saving || (dirty && !(await save()))) return;
     onPractice(editingId);
   });
   window.addEventListener("beforeunload", (event) => {
-    if (!dirty) return;
+    if (!dirty && !saving) return;
     event.preventDefault();
     event.returnValue = "";
   });

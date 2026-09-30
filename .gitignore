@@ -1,8 +1,26 @@
+# Dependencies, builds, and test output
 node_modules/
 dist/
-.DS_Store
 .npm-cache/
+.vite/
+coverage/
+
+# Local vocabulary drafts, backups, locks, and verification fixtures
+.local-data/
+*.tmp
+*.log
+
+# Machine-specific environment; keep shareable examples
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Downloaded OCR models and Python runtime files
 ocr-models/
 .venv/
 __pycache__/
 *.pyc
+
+# macOS metadata
+.DS_Store

@@ -1,0 +1,397 @@
+{
+  "version": 1,
+  "units": [
+    {
+      "id": "unit-import-d9654cf83fd661228acc6b65097de45e",
+      "name": "第一課　李さんは中国人です",
+      "kind": "vocabulary",
+      "words": [
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-1",
+          "japanese": "中国人",
+          "kana": "ちゅうごくじん",
+          "accent": 4,
+          "meaning": "中国人"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-2",
+          "japanese": "日本人",
+          "kana": "にほんじん",
+          "accent": 4,
+          "meaning": "日本人"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-3",
+          "japanese": "韓国人",
+          "kana": "かんこくじん",
+          "accent": 4,
+          "meaning": "韩国人"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-4",
+          "japanese": "アメリカ人",
+          "kana": "アメリカじん",
+          "accent": 4,
+          "meaning": "美国人"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-5",
+          "japanese": "フランス人",
+          "kana": "フランスじん",
+          "accent": 4,
+          "meaning": "法国人"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-6",
+          "japanese": "学生",
+          "kana": "がくせい",
+          "accent": 0,
+          "meaning": "（大）学生"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-7",
+          "japanese": "先生",
+          "kana": "せんせい",
+          "accent": 3,
+          "meaning": "老师"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-8",
+          "japanese": "留学生",
+          "kana": "りゅうがくせい",
+          "accent": 3,
+          "meaning": "留学生"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-9",
+          "japanese": "教授",
+          "kana": "きょうじゅ",
+          "accent": 0,
+          "meaning": "教授"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-10",
+          "japanese": "社員",
+          "kana": "しゃいん",
+          "accent": 1,
+          "meaning": "职员"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-11",
+          "japanese": "会社員",
+          "kana": "かいしゃいん",
+          "accent": 3,
+          "meaning": "公司职员"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-12",
+          "japanese": "店員",
+          "kana": "てんいん",
+          "accent": 0,
+          "meaning": "店员"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-13",
+          "japanese": "研修生",
+          "kana": "けんしゅうせい",
+          "accent": 3,
+          "meaning": "进修生"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-14",
+          "japanese": "企業",
+          "kana": "きぎょう",
+          "accent": 1,
+          "meaning": "企业"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-15",
+          "japanese": "父",
+          "kana": "ちち",
+          "accent": 2,
+          "meaning": "（我）父亲"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-16",
+          "japanese": "課長",
+          "kana": "かちょう",
+          "accent": 0,
+          "meaning": "科长"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-17",
+          "japanese": "社長",
+          "kana": "しゃちょう",
+          "accent": 0,
+          "meaning": "总经理，社长"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-18",
+          "japanese": "出迎え",
+          "kana": "でむかえ",
+          "accent": 0,
+          "meaning": "迎接"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-19",
+          "japanese": "あの人",
+          "kana": "あのひと",
+          "accent": 2,
+          "meaning": "那个人"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-20",
+          "japanese": "わたし",
+          "kana": "わたし",
+          "accent": 0,
+          "meaning": "我"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-21",
+          "japanese": "あなた",
+          "kana": "あなた",
+          "accent": 2,
+          "meaning": "你"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-22",
+          "japanese": "どうも",
+          "kana": "どうも",
+          "accent": 1,
+          "meaning": "非常，很"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-23",
+          "japanese": "李秀麗",
+          "kana": "りしゅうれい",
+          "accent": 11,
+          "meaning": "李秀丽"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-24",
+          "japanese": "王",
+          "kana": "おう",
+          "accent": 1,
+          "meaning": "王"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-25",
+          "japanese": "張",
+          "kana": "ちょう",
+          "accent": 1,
+          "meaning": "张"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-26",
+          "japanese": "森健太郎",
+          "kana": "もりけんたろう",
+          "accent": 3,
+          "meaning": "森健太郎"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-27",
+          "japanese": "林",
+          "kana": "はやし",
+          "accent": 0,
+          "meaning": "林"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-28",
+          "japanese": "小野緑",
+          "kana": "おのみどり",
+          "accent": 1,
+          "meaning": "小野绿"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-29",
+          "japanese": "吉田",
+          "kana": "よしだ",
+          "accent": 0,
+          "meaning": "吉田"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-30",
+          "japanese": "田中",
+          "kana": "たなか",
+          "accent": 0,
+          "meaning": "田中"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-31",
+          "japanese": "中村",
+          "kana": "なかむら",
+          "accent": 0,
+          "meaning": "中村"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-32",
+          "japanese": "太郎",
+          "kana": "たろう",
+          "accent": 1,
+          "meaning": "太郎"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-33",
+          "japanese": "金",
+          "kana": "キム",
+          "accent": 1,
+          "meaning": "金"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-34",
+          "japanese": "デュポン",
+          "kana": "デュポン",
+          "accent": 1,
+          "meaning": "迪蓬"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-35",
+          "japanese": "スミス",
+          "kana": "スミス",
+          "accent": 1,
+          "meaning": "史密斯"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-36",
+          "japanese": "ジョンソン",
+          "kana": "ジョンソン",
+          "accent": 1,
+          "meaning": "约翰逊"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-37",
+          "japanese": "中国",
+          "kana": "ちゅうごく",
+          "accent": 1,
+          "meaning": "中国"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-38",
+          "japanese": "東京大学",
+          "kana": "とうきょうだいがく",
+          "accent": 5,
+          "meaning": "东京大学"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-39",
+          "japanese": "北京大学",
+          "kana": "ペキンだいがく",
+          "accent": 4,
+          "meaning": "北京大学"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-40",
+          "japanese": "日中企画",
+          "kana": "にっちゅうきかく",
+          "accent": 5,
+          "meaning": "（虚构）日中策划公司"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-41",
+          "japanese": "北京旅行社",
+          "kana": "ペキンりょこうしゃ",
+          "accent": 5,
+          "meaning": "（虚构）北京旅行社"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-42",
+          "japanese": "日中商事",
+          "kana": "にっちゅうしょうじ",
+          "accent": 5,
+          "meaning": "（虚构）日中商社"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-43",
+          "japanese": "はい",
+          "kana": "はい",
+          "accent": 1,
+          "meaning": "哎，是（应答）；是的"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-44",
+          "japanese": "いいえ",
+          "kana": "いいえ",
+          "accent": 3,
+          "meaning": "不，不是"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-45",
+          "japanese": "あっ",
+          "kana": "あっ",
+          "accent": 1,
+          "meaning": "哎，哎呀"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-46",
+          "japanese": "こんにちは",
+          "kana": "こんにちは",
+          "accent": 5,
+          "meaning": "你好"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-47",
+          "japanese": "すみません",
+          "kana": "すみません",
+          "accent": 4,
+          "meaning": "对不起；请问"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-48",
+          "japanese": "どうぞ",
+          "kana": "どうぞ",
+          "accent": 1,
+          "meaning": "请"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-49",
+          "japanese": "よろしくお願いします",
+          "kana": "よろしくおねがいします",
+          "accent": 6,
+          "meaning": "请多关照"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-50",
+          "japanese": "はじめまして",
+          "kana": "はじめまして",
+          "accent": 4,
+          "meaning": "初次见面"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-51",
+          "japanese": "こちらこそ",
+          "kana": "こちらこそ",
+          "accent": 4,
+          "meaning": "我才要（请您～）"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-52",
+          "japanese": "そうです",
+          "kana": "そうです",
+          "accent": 1,
+          "meaning": "是（这样）"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-53",
+          "japanese": "ちがいます",
+          "kana": "ちがいます",
+          "accent": 4,
+          "meaning": "不是"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-54",
+          "japanese": "分かりません",
+          "kana": "わかりません",
+          "accent": 5,
+          "meaning": "不知道"
+        },
+        {
+          "id": "word-d9654cf83fd661228acc6b65097de45e-55",
+          "japanese": "どうもすみません",
+          "kana": "どうもすみません",
+          "accent": 14,
+          "meaning": "实在对不起"
+        }
+      ]
+    }
+  ]
+}

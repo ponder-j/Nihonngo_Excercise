@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f7f1e6" />
+    <meta name="theme-color" content="#f5f7fa" />
     <meta
       name="description"
       content="日语假名与课程单词卡片练习。自建单元和词库，记录学习进度。数据保存在本机。"
@@ -11,7 +11,7 @@
     <title>かな Loop · 日语单元练习</title>
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Noto+Sans+JP:wght@400;500;600;700;800&amp;family=Noto+Serif+JP:wght@600;700&amp;display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&amp;family=Noto+Sans+JP:wght@400;500;600;700;800&amp;display=swap"
       media="print"
       onload="this.media='all'"
     />
@@ -20,10 +20,8 @@
     <div class="page-shell">
       <header class="site-header">
         <a class="brand" href="#" aria-label="かな Loop 首页">
-          <span class="brand-mark" aria-hidden="true">あ</span>
           <span>
             <strong>かな Loop</strong>
-            <small>从五十音，到每一课的新单词</small>
           </span>
         </a>
 
@@ -32,7 +30,6 @@
           <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
           <span class="mode-switch-copy">
             <strong>校验模式</strong>
-            <small>写出来再判定</small>
           </span>
         </label>
 
@@ -46,9 +43,7 @@
             <strong id="header-forgot-rate">--</strong>
           </span>
           <button class="icon-button" id="open-data-button" type="button" aria-label="查看学习数据">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 19V9m6 10V5m6 14v-7m4 7H2" />
-            </svg>
+            <span data-icon="chart"></span>
           </button>
         </div>
       </header>
@@ -60,8 +55,14 @@
 
       <main id="practice-page">
         <section class="unit-picker" aria-label="选择练习单元">
-          <div class="unit-picker-copy"><span class="eyebrow">练习哪一课</span><label for="unit-select">选择单元 / 课程</label></div>
-          <select id="unit-select"></select>
+          <div class="unit-picker-copy"><label id="unit-select-label">选择单元 / 课程</label></div>
+          <div id="unit-select" class="unit-select">
+            <button id="unit-select-trigger" class="unit-select-trigger" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="unit-select-menu" aria-labelledby="unit-select-label unit-select-value">
+              <span id="unit-select-value" class="unit-select-value">读取单元…</span>
+              <span data-icon="chevron-down"></span>
+            </button>
+            <div id="unit-select-menu" class="unit-select-menu" role="listbox" aria-labelledby="unit-select-label" hidden></div>
+          </div>
           <span class="unit-size" id="unit-size">71 个假名</span>
           <button class="text-button" id="edit-current-unit" type="button">管理词库 ↗</button>
         </section>
@@ -69,7 +70,7 @@
         <section class="practice-card" id="practice-card" aria-labelledby="question-label">
           <div class="card-topline">
             <div>
-              <span class="eyebrow" id="question-label">假名练习单元</span>
+              <h2 class="unit-question-title" id="question-label">假名练习单元</h2>
               <p class="mode-label" id="mode-label">看假名，回忆罗马音</p>
             </div>
             <div class="question-count" aria-label="本次页面打开后的题数">
@@ -95,12 +96,12 @@
             <div class="reveal-actions" id="reveal-actions"></div>
             <div class="judgement-actions" id="judgement-actions">
               <button class="button button-forgot" id="forgot-button" type="button">
-                <span class="button-icon" aria-hidden="true">×</span>
+                <span class="button-icon" data-icon="close"></span>
                 <span>我忘了！</span>
                 <kbd>1</kbd>
               </button>
               <button class="button button-known" id="known-button" type="button">
-                <span class="button-icon" aria-hidden="true">✓</span>
+                <span class="button-icon" data-icon="check"></span>
                 <span>我知道！</span>
                 <kbd>2</kbd>
               </button>
@@ -115,8 +116,7 @@
           <section class="panel-section today-section">
             <div class="section-heading">
               <div>
-                <span class="eyebrow">当前单元 · 今日进度</span>
-                <h2>一点点，也算数</h2>
+                <h2>今日练习</h2>
               </div>
               <span class="goal-badge" id="goal-badge">0 / 50</span>
             </div>
@@ -147,8 +147,7 @@
           <section class="panel-section">
             <div class="section-heading compact">
               <div>
-                <span class="eyebrow">最近 7 天</span>
-                <h2>练习记录</h2>
+                <h2>最近 7 天</h2>
               </div>
             </div>
             <div class="week-chart" id="week-chart"></div>
@@ -157,14 +156,11 @@
           <details class="panel-section weak-section" id="weak-section">
             <summary class="section-heading compact weak-summary">
               <div>
-                <span class="eyebrow">需要留意</span>
                 <h2 id="weak-title">薄弱假名</h2>
               </div>
               <span class="weak-toggle">
                 <span class="soft-label">点击展开</span>
-                <svg class="weak-chevron" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m7 10 5 5 5-5" />
-                </svg>
+                <span class="weak-chevron" data-icon="chevron-down"></span>
               </span>
             </summary>
             <div class="weak-list" id="weak-list"></div>
@@ -175,18 +171,29 @@
 
       <main id="manage-page" hidden>
         <div class="manage-heading">
-          <div><span class="eyebrow">我的学习内容</span><h1>单元与词库</h1><p>把每一课的单词，变成随时可以抽查的卡片。</p></div>
-          <button class="button button-primary" id="new-unit-button" type="button">＋ 新建单元</button>
+          <div><h1>单元与词库</h1></div>
+          <div class="library-actions">
+            <button class="button button-secondary" id="refresh-library-button" type="button">刷新词库</button>
+            <button class="button button-secondary" id="export-library-button" type="button">导出词库</button>
+            <button class="button button-secondary" id="import-library-button" type="button">导入 JSON</button>
+            <input id="import-library-file" type="file" accept=".json,application/json" hidden />
+            <button class="button button-primary" id="new-unit-button" type="button">＋ 新建单元</button>
+          </div>
         </div>
         <div class="manage-layout">
           <aside class="unit-library" aria-label="已有单元">
             <div class="library-heading"><strong>全部单元</strong><span>选择后编辑</span></div>
             <div id="unit-list" class="unit-list"></div>
-            <p class="library-note">单元、词库和学习记录保存在此浏览器中。</p>
+            <div id="imports-section" hidden>
+              <div class="library-heading"><strong>待审核导入</strong></div>
+              <div id="import-list" class="unit-list"></div>
+            </div>
+            <p class="library-note" id="library-storage-note"></p>
+            <button class="text-button" id="migrate-library-button" type="button" hidden>迁移浏览器中的单元</button>
           </aside>
           <section class="unit-editor" aria-labelledby="editor-title">
             <div class="editor-heading">
-              <div><span class="eyebrow">课程词库</span><h2 id="editor-title">编辑课程词库</h2></div>
+              <div><h2 id="editor-title">编辑课程词库</h2></div>
               <span class="goal-badge" id="editor-word-count">0 个单词</span>
             </div>
             <div id="builtin-unit-info" hidden>
@@ -194,6 +201,7 @@
               <div class="builtin-kana-grid" id="builtin-kana-grid" lang="ja"></div>
             </div>
             <form id="unit-form" novalidate>
+              <div id="import-review-info" class="import-review-info" hidden></div>
               <label class="unit-name-label" for="unit-name">单元 / 课程名称</label>
               <input class="unit-name-input" id="unit-name" type="text" placeholder="例如：第一课 小李是个中国人" autocomplete="off" />
               <div class="word-entry-intro"><strong>单词信息</strong><span><kbd>Tab</kbd> 下一栏 · <kbd>Enter</kbd> 确认此行并继续</span></div>
@@ -210,15 +218,12 @@
       </main>
 
       <footer class="site-footer">
-        <span>数据仅保存在此浏览器的本机存储中</span>
-        <span>かな Loop · keep looping</span>
+        <span id="storage-footer">正在读取词库…</span>
       </footer>
     </div>
 
     <div class="modal-backdrop" id="milestone-modal" hidden>
       <section class="modal-card milestone-card" role="dialog" aria-modal="true" aria-labelledby="milestone-title">
-        <div class="celebration-mark" aria-hidden="true">50</div>
-        <span class="eyebrow">50 题达成</span>
         <h2 id="milestone-title">今天就到此为止了？</h2>
         <p id="milestone-copy">你已经完成 50 题。再练一组当然可以，但现在收工也已经很棒了。</p>
         <div class="milestone-stats">
@@ -234,7 +239,6 @@
 
     <div class="modal-backdrop" id="summary-modal" hidden>
       <section class="modal-card summary-card" role="dialog" aria-modal="true" aria-labelledby="summary-title">
-        <span class="eyebrow">今日收工</span>
         <h2 id="summary-title">お疲れさま！</h2>
         <p>今天的练习已经记下来了。明天再打开，薄弱内容仍会优先出现。</p>
         <div class="summary-grid">
@@ -253,7 +257,6 @@
       <section class="modal-card data-card" role="dialog" aria-modal="true" aria-labelledby="data-title">
         <div class="modal-heading">
           <div>
-            <span class="eyebrow">本地数据</span>
             <h2 id="data-title">学习概况</h2>
             <p class="data-unit-name" id="data-unit-name"></p>
           </div>
@@ -281,7 +284,6 @@
     </div>
 
     <dialog class="confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
-      <span class="eyebrow">操作确认</span>
       <h2 id="confirm-title">确认操作</h2>
       <p id="confirm-message"></p>
       <div class="modal-actions">

@@ -1,7 +1,15 @@
 export const MAX_HANDWRITING_ATTEMPTS = 5;
 export const MAX_ROMAJI_ATTEMPTS = 1;
+export const MAX_VOCABULARY_ATTEMPTS = 3;
+
+export function getMaxAttempts(field) {
+  return field.kind === "vocabulary" ? MAX_VOCABULARY_ATTEMPTS : field.kind === "handwriting" ? MAX_HANDWRITING_ATTEMPTS : MAX_ROMAJI_ATTEMPTS;
+}
 
 export function getValidationFields({ direction, script }, item) {
+  if (direction === "meaningToJapanese") {
+    return [{ id: "vocabulary", label: "单词假名", kind: "vocabulary", expected: item.kana }];
+  }
   if (direction === "romajiToKana") {
     return [
       { id: "hiragana", label: "平假名", kind: "handwriting", expected: item.hiragana },
@@ -35,10 +43,15 @@ export function normalizeKana(value) {
 }
 
 export function matchesValidationAnswer(value, field) {
+  if (field.kind === "vocabulary") return normalizeVocabularyKana(value) === normalizeVocabularyKana(field.expected);
   const normalized = field.kind === "romaji" ? normalizeRomaji(value) : normalizeKana(value);
   if (normalized === field.expected) return true;
   if (field.kind !== "handwriting") return false;
   if (normalized.length !== 1) return false;
   const identicalGlyphs = ["へヘ", "べベ", "ぺペ"];
   return identicalGlyphs.some((pair) => pair.includes(normalized) && pair.includes(field.expected));
+}
+
+export function normalizeVocabularyKana(value) {
+  return normalizeKana(value).replace(/[ァ-ヶ]/g, (character) => String.fromCharCode(character.charCodeAt(0) - 0x60));
 }

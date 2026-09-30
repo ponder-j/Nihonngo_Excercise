@@ -1,0 +1,4 @@
+interface:
+  display_name: "日语词表识别与导入"
+  short_description: "识别日语单词表图片，导入本地服务并在词库管理页面核对后保存"
+  default_prompt: "使用 $nihongo-vocabulary-import 识别这张单词表图片并导入本地服务，供我核对和保存。"

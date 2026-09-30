@@ -54,7 +54,9 @@ function pressEnter(element, options = {}) {
   element.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...options }));
 }
 
-test("Enter confirms all four fields and focuses the next row without saving the whole library", () => {
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+test("Enter confirms all four fields and focuses the next row without saving the whole library", async () => {
   fillRow(2, { japanese: "先生", kana: "せんせい", accent: 3, meaning: "老师" });
   pressEnter(document.querySelector(".word-row:nth-child(3) [data-field='meaning']"));
   assert.equal(document.querySelectorAll(".word-row").length, 4);
@@ -62,6 +64,7 @@ test("Enter confirms all four fields and focuses the next row without saving the
   assert.equal(document.querySelector(".word-row:nth-child(3)").classList.contains("is-committed"), true);
   assert.equal(loadUnits().length, 1);
   document.querySelector("#save-unit-button").click();
+  await settle();
   assert.equal(loadUnits()[1].words.length, 3);
 });
 
@@ -77,7 +80,7 @@ test("Japanese IME confirmation and held Enter do not create or submit rows", ()
   assert.equal(document.querySelectorAll(".word-row").length, 4);
 });
 
-test("final Save includes unconfirmed complete rows and rejects partial rows with focus on the missing field", () => {
+test("final Save includes unconfirmed complete rows and rejects partial rows with focus on the missing field", async () => {
   input(".word-row:nth-child(3) [data-field='japanese']", "先生");
   document.querySelector("#save-unit-button").click();
   assert.equal(loadUnits().length, 1);
@@ -85,17 +88,19 @@ test("final Save includes unconfirmed complete rows and rejects partial rows wit
   assert.match(document.querySelector("#editor-status").textContent, /第 3 行/);
   fillRow(2, { japanese: "先生", kana: "せんせい", accent: 3, meaning: "老师" });
   document.querySelector("#save-unit-button").click();
+  await settle();
   assert.equal(loadUnits()[1].words.length, 3);
   assert.equal(loadUnits()[1].words[0].id, firstWord.id);
   assert.equal(loadUnits()[1].words[1].accent, 0);
 });
 
-test("per-word deletion takes effect on Save and keeps the remaining word identity", () => {
+test("per-word deletion takes effect on Save and keeps the remaining word identity", async () => {
   document.querySelector(".word-row .word-delete").click();
   assert.equal(document.querySelectorAll(".word-row").length, 2);
   assert.equal(document.querySelector(".word-row input").value, "学生");
   assert.equal(units[1].words.length, 2);
   document.querySelector("#save-unit-button").click();
+  await settle();
   assert.deepEqual(loadUnits()[1].words, [secondWord]);
 });
 
@@ -115,9 +120,10 @@ test("canceling leave preserves the draft, and confirming leave clears the dirty
   assert.equal(document.querySelector("#unit-name").value, lesson.name);
 });
 
-test("saving and practicing uses the edited unit, while built-in kana stays read-only", () => {
+test("saving and practicing uses the edited unit, while built-in kana stays read-only", async () => {
   input("#unit-name", "第一课 新名称");
   document.querySelector("#practice-unit-button").click();
+  await settle();
   assert.equal(practiced, lesson.id);
   assert.equal(loadUnits()[1].name, "第一课 新名称");
   manager.open(KANA_UNIT.id);
@@ -131,6 +137,7 @@ test("empty units can be created, and deleting a unit removes only its own recor
   await Promise.resolve();
   input("#unit-name", "第二课");
   document.querySelector("#save-unit-button").click();
+  await settle();
   assert.equal(units.length, 3);
   assert.deepEqual(units[2].words, []);
   const createdId = units[2].id;
@@ -142,18 +149,19 @@ test("empty units can be created, and deleting a unit removes only its own recor
   assert.equal(units.length, 3);
   document.querySelector("#delete-unit-button").click();
   document.querySelector("#confirm-accept").click();
-  await Promise.resolve();
+  await settle();
   assert.equal(units.length, 2);
   assert.equal(loadProgress(createdId, ["test"]).totalAnswered, 0);
   assert.equal(loadProgress(lesson.id, [firstWord.id]).totalForgot, 1);
   assert.equal(document.querySelector("#unit-form").hidden, true);
 });
 
-test("failed storage saves retain the draft and do not publish a partially saved course", (context) => {
+test("failed storage saves retain the draft and do not publish a partially saved course", async (context) => {
   input("#unit-name", "必须保留的草稿");
   context.mock.method(window.Storage.prototype, "setItem", () => { throw new Error("quota exceeded"); });
   context.mock.method(console, "warn", () => {});
   document.querySelector("#save-unit-button").click();
+  await settle();
   assert.equal(document.querySelector("#unit-name").value, "必须保留的草稿");
   assert.equal(units[1].name, lesson.name);
   assert.match(document.querySelector("#editor-status").textContent, /保存失败/);

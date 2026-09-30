@@ -12,12 +12,18 @@ import {
 import { clearProgress, loadActiveUnit, loadProgress, loadUnits, saveActiveUnit, saveProgress } from "./store.js";
 import { getUnitItems } from "./units.js";
 import { createUnitManager } from "./unit-manager.js";
+import { createLibraryClient } from "./library-client.js";
+import { toLibrary } from "./library-format.js";
+import { createUnitSelect } from "./unit-select.js";
+import { icon, renderIcons } from "./icons.js";
 import { confirmAction } from "./confirm.js";
 import {
   getValidationFields,
   matchesValidationAnswer,
   MAX_HANDWRITING_ATTEMPTS,
   MAX_ROMAJI_ATTEMPTS,
+  MAX_VOCABULARY_ATTEMPTS,
+  getMaxAttempts,
 } from "./validation.js";
 
 const elements = {
@@ -82,6 +88,9 @@ let questionTimer = null;
 let sessionCount = 0;
 let transitionLocked = false;
 let milestoneShownFor = null;
+const libraryClient = createLibraryClient({ baseUrl: import.meta.env.BASE_URL });
+const unitSelect = createUnitSelect({ root: elements.unitSelect, onChange: selectUnit });
+renderIcons();
 
 const unitManager = createUnitManager({
   getUnits: () => units,
@@ -94,6 +103,10 @@ const unitManager = createUnitManager({
     showPage("practice");
   },
   showToast,
+  persistUnits: (next, options) => libraryClient.save(next, options),
+  getImports: () => libraryClient.getImports(),
+  discardImport: (id) => libraryClient.discardImport(id),
+  savedMessage: libraryClient.local ? "单元已写入本地词库文件" : "单元已保存在此浏览器，可导出后导入本地服务",
 });
 
 function activeItems() {
@@ -101,20 +114,13 @@ function activeItems() {
 }
 
 function isValidationMode() {
-  return activeUnit.kind === "kana" && elements.validationMode.checked;
+  return elements.validationMode.checked;
 }
 
 function renderUnitPicker() {
-  elements.unitSelect.replaceChildren();
-  units.forEach((unit) => {
-    const option = document.createElement("option");
-    option.value = unit.id;
-    option.textContent = unit.name;
-    elements.unitSelect.append(option);
-  });
-  elements.unitSelect.value = activeUnit.id;
+  unitSelect.render(units, activeUnit.id);
   elements.unitSize.textContent = `${activeItems().length} 个${activeUnit.kind === "kana" ? "假名" : "单词"}`;
-  elements.validationSwitch.hidden = currentPage !== "practice" || activeUnit.kind !== "kana";
+  elements.validationSwitch.hidden = false;
   document.querySelector("#weak-title").textContent = activeUnit.kind === "kana" ? "薄弱假名" : "薄弱单词";
 }
 
@@ -141,6 +147,7 @@ function selectUnit(unitId) {
 async function showPage(page) {
   if (currentPage === "manage" && page === "practice" && !(await unitManager.canLeave())) return;
   cancelQuestionTransition();
+  unitSelect.close();
   currentPage = page;
   elements.practicePage.hidden = page !== "practice";
   elements.managePage.hidden = page !== "manage";
@@ -150,8 +157,20 @@ async function showPage(page) {
     if (page === name) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
   });
-  elements.validationSwitch.hidden = page !== "practice" || activeUnit.kind !== "kana";
-  if (page === "manage") unitManager.open(activeUnit.id);
+  elements.validationSwitch.hidden = false;
+  if (page === "manage") {
+    unitManager.open(activeUnit.id);
+    // Refresh pending agent imports whenever the manager is opened.
+    elements.managePage.inert = true;
+    try {
+      const next = await libraryClient.reload();
+      units = next;
+      selectUnit(activeUnit.id);
+      unitManager.open(activeUnit.id);
+      updateStorageNotice();
+    } catch (error) { showToast(error.message); }
+    finally { elements.managePage.inert = false; }
+  }
   else nextQuestion();
 }
 
@@ -165,7 +184,8 @@ function nextQuestion() {
     const prompt = pickPrompt();
     current = { item, ...prompt, validation: createValidationState(prompt, item) };
   } else {
-    current = { item, direction: "meaningToJapanese" };
+    const prompt = { direction: "meaningToJapanese" };
+    current = { item, ...prompt, validation: createValidationState(prompt, item) };
   }
   renderQuestion();
 }
@@ -196,7 +216,7 @@ function renderQuestion() {
   elements.prompt.classList.remove("is-empty");
   elements.answerPanel.classList.toggle("vocabulary-answer", vocabularyMode);
   elements.emptyUnitButton.hidden = Boolean(current);
-  elements.keyboardHint.hidden = !current;
+  elements.keyboardHint.hidden = !current || validationMode;
 
   elements.answerPanel.hidden = true;
   elements.answerPanel.classList.remove("is-visible");
@@ -229,17 +249,17 @@ function renderQuestion() {
   elements.revealActions.classList.toggle("has-two-actions", direction === "romajiToKana");
 
   if (vocabularyMode) {
-    elements.modeLabel.textContent = "看中文释义，回忆日文单词";
+    elements.modeLabel.textContent = validationMode ? "看中文，输入单词假名" : "看中文释义，回忆日文单词";
     elements.scriptTag.textContent = "中文释义";
     elements.scriptTag.lang = "zh-CN";
     elements.prompt.textContent = item.meaning;
     elements.prompt.lang = "zh-CN";
     elements.prompt.classList.remove("is-romaji");
-    elements.promptHint.textContent = "想一想日文写法、读音和声调，再查看答案。";
+    elements.promptHint.textContent = validationMode ? "输入平假名即可，最多尝试三次。" : "想一想日文写法、读音和声调，再查看答案。";
     elements.answerLabel.textContent = "日文答案";
     elements.answerValue.textContent = item.japanese;
     elements.answerDetail.textContent = `假名：${item.kana}　·　声调：${item.accent} 型`;
-    elements.revealActions.append(makeButton("查看答案", "button-reveal", (event) => revealAnswer(undefined, event.currentTarget), "space"));
+    if (!validationMode) elements.revealActions.append(makeButton("查看答案", "button-reveal", (event) => revealAnswer(undefined, event.currentTarget), "space"));
   } else if (direction === "kanaToRomaji") {
     elements.modeLabel.textContent = "看假名，回忆罗马音";
     elements.scriptTag.textContent = script === "hiragana" ? "平假名" : "片假名";
@@ -294,13 +314,12 @@ function renderValidationArea() {
   const fields = Object.values(validation.fields);
   const intro = document.createElement("div");
   intro.className = "validation-intro";
-  intro.innerHTML = `
-    <div>
-      <span class="eyebrow">主动回忆</span>
-      <strong>写出答案，再检查</strong>
-    </div>
-    <span class="validation-limit">手写最多 ${MAX_HANDWRITING_ATTEMPTS} 次 · 罗马音 1 次</span>
-  `;
+  const heading = document.createElement("strong");
+  heading.textContent = activeUnit.kind === "vocabulary" ? "输入答案" : "写出答案，再检查";
+  const limit = document.createElement("span");
+  limit.className = "validation-limit";
+  limit.textContent = activeUnit.kind === "vocabulary" ? `最多 ${MAX_VOCABULARY_ATTEMPTS} 次` : `手写最多 ${MAX_HANDWRITING_ATTEMPTS} 次 · 罗马音 ${MAX_ROMAJI_ATTEMPTS} 次`;
+  intro.append(heading, limit);
   elements.validationArea.append(intro);
 
   const fieldGrid = document.createElement("div");
@@ -317,7 +336,12 @@ function renderValidationArea() {
 }
 
 function toggleValidationMode() {
-  if (!current || activeUnit.kind !== "kana") return;
+  if (!current) return;
+  if (transitionLocked) {
+    cancelQuestionTransition();
+    if (currentPage === "practice") nextQuestion();
+    return;
+  }
   if (elements.validationMode.checked) {
     current.validation = createValidationState(current, current.item);
   }
@@ -335,7 +359,7 @@ function createValidationField(field) {
   label.textContent = field.label;
   const attempts = document.createElement("span");
   attempts.className = "validation-attempts";
-  attempts.textContent = `0 / ${field.kind === "handwriting" ? MAX_HANDWRITING_ATTEMPTS : MAX_ROMAJI_ATTEMPTS}`;
+  attempts.textContent = `0 / ${getMaxAttempts(field)}`;
   header.append(label, attempts);
   article.append(header);
 
@@ -357,7 +381,7 @@ function createValidationField(field) {
     const clearButton = document.createElement("button");
     clearButton.type = "button";
     clearButton.className = "canvas-clear";
-    clearButton.textContent = "↺";
+    clearButton.append(icon("reset"));
     clearButton.title = "清空笔迹";
     clearButton.setAttribute("aria-label", "清空笔迹");
     board.append(clearButton);
@@ -372,15 +396,15 @@ function createValidationField(field) {
   } else {
     const inputWrap = document.createElement("label");
     inputWrap.className = "romaji-input-wrap";
-    inputWrap.innerHTML = '<span class="input-prefix">↳</span>';
     const input = document.createElement("input");
     input.type = "text";
     input.className = "romaji-input";
-    input.placeholder = "输入罗马音";
+    input.placeholder = field.kind === "vocabulary" ? "输入平假名" : "输入罗马音";
     input.autocomplete = "off";
     input.autocapitalize = "none";
     input.spellcheck = false;
-    input.setAttribute("aria-label", "输入罗马音");
+    input.lang = field.kind === "vocabulary" ? "ja" : "en";
+    input.setAttribute("aria-label", input.placeholder);
     inputWrap.append(input);
     article.append(inputWrap);
     field.input = input;
@@ -390,6 +414,8 @@ function createValidationField(field) {
   footer.className = "validation-field-footer";
   const status = document.createElement("span");
   status.className = "validation-status";
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
   status.textContent = field.kind === "handwriting" ? "等待识别" : "等待检查";
   const checkButton = document.createElement("button");
   checkButton.type = "button";
@@ -461,6 +487,11 @@ async function submitValidationField(field) {
     setValidationStatus(field, "请先写一个假名", "error");
     return;
   }
+  if (field.input && !field.input.value.trim()) {
+    setValidationStatus(field, "请先输入答案", "error");
+    field.input.focus();
+    return;
+  }
 
   const question = current;
   const validation = question.validation;
@@ -484,12 +515,12 @@ async function submitValidationField(field) {
       lockValidationField(field);
     } else {
       current.validation.hadMistake = true;
-      if (field.attempts >= (field.kind === "handwriting" ? MAX_HANDWRITING_ATTEMPTS : MAX_ROMAJI_ATTEMPTS)) {
+      if (field.attempts >= getMaxAttempts(field)) {
         field.status = "failed";
         setValidationStatus(field, `${recognized}不对，答案是 ${field.expected}`, "error");
         lockValidationField(field);
       } else {
-        setValidationStatus(field, `${recognized}再试一次`, "error");
+        setValidationStatus(field, `${recognized}再试一次${field.kind === "vocabulary" ? `，还剩 ${getMaxAttempts(field) - field.attempts} 次` : ""}`, "error");
         field.checkButton.disabled = false;
         if (field.kind === "handwriting") clearCanvas(field.canvas, field.drawState, field.canvas.parentElement.querySelector(".draw-placeholder"));
         else field.input.select();
@@ -539,7 +570,7 @@ function updateOcrStatus(field) {
 function updateValidationAttempts(field) {
   const row = field.checkButton.closest(".validation-field");
   const attempts = row.querySelector(".validation-attempts");
-  attempts.textContent = `${field.attempts} / ${field.kind === "handwriting" ? MAX_HANDWRITING_ATTEMPTS : MAX_ROMAJI_ATTEMPTS}`;
+  attempts.textContent = `${field.attempts} / ${getMaxAttempts(field)}`;
 }
 
 function setValidationStatus(field, text, state) {
@@ -560,13 +591,25 @@ function lockValidationField(field) {
 function maybeFinishValidation() {
   const fields = Object.values(current.validation.fields);
   if (fields.every((field) => field.status !== "pending")) {
-    finishValidation(current.validation.hadMistake ? "forgot" : "known");
+    finishValidation(activeUnit.kind === "vocabulary"
+      ? fields.every((field) => field.status === "correct") ? "known" : "forgot"
+      : current.validation.hadMistake ? "forgot" : "known");
   }
 }
 
 function finishValidation(result) {
   if (!current || transitionLocked) return;
-  answer(result);
+  if (activeUnit.kind === "vocabulary") {
+    Object.values(current.validation.fields).forEach((field) => lockValidationField(field));
+    revealAnswer();
+    elements.validationArea.querySelector(".validation-abandon").hidden = true;
+    const next = makeButton("下一题", "button-primary validation-next", () => {
+      transitionLocked = false;
+      nextQuestion();
+    });
+    elements.validationArea.append(next);
+    answer(result, { waitForNext: true });
+  } else answer(result);
 }
 
 function makeButton(label, className, onClick, shortcut) {
@@ -618,7 +661,7 @@ function revealAnswer(kanaOnly, clickedButton) {
   elements.forgotButton.classList.add("pulse");
 }
 
-function answer(result) {
+function answer(result, { waitForNext = false } = {}) {
   if (!current || transitionLocked || currentPage !== "practice") return;
   transitionLocked = true;
   elements.practiceCard.classList.add(result === "known" ? "is-known" : "is-forgot");
@@ -632,10 +675,12 @@ function answer(result) {
   renderStats();
   showFeedback(result, current.item);
 
-  questionTimer = window.setTimeout(() => {
-    transitionLocked = false;
-    nextQuestion();
-  }, 260);
+  if (!waitForNext) {
+    questionTimer = window.setTimeout(() => {
+      transitionLocked = false;
+      nextQuestion();
+    }, 260);
+  }
 
   const today = getDailyStats(progress);
   maybeShowMilestone(today);
@@ -819,7 +864,6 @@ function bindEvents() {
   });
   document.querySelector("#edit-current-unit").addEventListener("click", () => showPage("manage"));
   elements.emptyUnitButton.addEventListener("click", () => showPage("manage"));
-  elements.unitSelect.addEventListener("change", () => selectUnit(elements.unitSelect.value));
   elements.knownButton.addEventListener("click", () => answer("known"));
   elements.forgotButton.addEventListener("click", () => answer("forgot"));
   elements.validationMode.addEventListener("change", toggleValidationMode);
@@ -906,7 +950,68 @@ function showToast(message) {
   showToast.timer = window.setTimeout(() => elements.toast.classList.remove("show"), 2200);
 }
 
-bindEvents();
-renderUnitPicker();
-renderStats();
-nextQuestion();
+function updateStorageNotice() {
+  const local = libraryClient.local;
+  document.querySelector("#library-storage-note").textContent = local
+    ? "保存后写入本地词库文件。学习记录仍保存在此浏览器。"
+    : "已发布词库来自 GitHub。此处的修改保存在此浏览器，可导出后导入本地服务。";
+  document.querySelector("#storage-footer").textContent = local
+    ? "词库保存至本地文件 · 学习记录保存在此浏览器"
+    : "读取已发布词库 · 学习记录与个人修改保存在此浏览器";
+  document.querySelector("#migrate-library-button").hidden = !libraryClient.migrationCount();
+}
+
+async function refreshLibrary(action = () => libraryClient.reload()) {
+  if (!(await unitManager.canLeave())) return;
+  elements.managePage.inert = true;
+  try {
+    const next = await action();
+    units = next;
+    selectUnit(activeUnit.id);
+    unitManager.open(activeUnit.id);
+    updateStorageNotice();
+    showToast("词库已更新");
+  } catch (error) { showToast(error.message); }
+  finally { elements.managePage.inert = false; }
+}
+
+async function start() {
+  try {
+    units = await libraryClient.initialize();
+    activeUnit = units.find((unit) => unit.id === loadActiveUnit()) || units[0];
+    progress = loadProgress(activeUnit.id, activeItems().map((item) => item.id));
+  } catch (error) { showToast(`词库加载失败：${error.message}。请点击「刷新词库」重试。`); }
+  updateStorageNotice();
+  bindEvents();
+  renderUnitPicker();
+  renderStats();
+  nextQuestion();
+  document.querySelector("#refresh-library-button").addEventListener("click", () => refreshLibrary());
+  document.querySelector("#migrate-library-button").addEventListener("click", () => refreshLibrary(() => libraryClient.migrate()));
+  document.querySelector("#export-library-button").addEventListener("click", () => {
+    const blob = new Blob([`${JSON.stringify(toLibrary(units), null, 2)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "units.json";
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  const fileInput = document.querySelector("#import-library-file");
+  document.querySelector("#import-library-button").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    await refreshLibrary(async () => libraryClient.importLibrary(JSON.parse(await file.text())));
+    fileInput.value = "";
+  });
+  const importId = new URLSearchParams(window.location.search).get("import");
+  if (importId && libraryClient.local) {
+    await showPage("manage");
+    const draft = libraryClient.getImports().find((entry) => entry.id === importId);
+    if (draft) unitManager.open(draft.unit.id, draft.id);
+    else showToast("该导入草稿已确认或不存在，请查看已有单元");
+  }
+}
+
+start();
