@@ -4,6 +4,7 @@ import {
   getDailyStats,
   getMasteredCount,
   getRecentDays,
+  getReviewItemIds,
   getWeakItems,
   pickNextItem,
   pickPrompt,
@@ -31,6 +32,9 @@ const elements = {
   managePage: document.querySelector("#manage-page"),
   unitSelect: document.querySelector("#unit-select"),
   unitSize: document.querySelector("#unit-size"),
+  reviewToggle: document.querySelector("#review-toggle"),
+  reviewToggleLabel: document.querySelector("#review-toggle-label"),
+  reviewCount: document.querySelector("#review-count"),
   questionLabel: document.querySelector("#question-label"),
   emptyUnitButton: document.querySelector("#empty-unit-button"),
   keyboardHint: document.querySelector("#practice-keyboard-hint"),
@@ -88,6 +92,7 @@ let questionTimer = null;
 let sessionCount = 0;
 let transitionLocked = false;
 let milestoneShownFor = null;
+let reviewMode = false;
 const libraryClient = createLibraryClient({ baseUrl: import.meta.env.BASE_URL });
 const unitSelect = createUnitSelect({ root: elements.unitSelect, onChange: selectUnit });
 renderIcons();
@@ -122,6 +127,21 @@ function renderUnitPicker() {
   elements.unitSize.textContent = `${activeItems().length} 个${activeUnit.kind === "kana" ? "假名" : "单词"}`;
   elements.validationSwitch.hidden = false;
   document.querySelector("#weak-title").textContent = activeUnit.kind === "kana" ? "薄弱假名" : "薄弱单词";
+  renderReviewControl();
+}
+
+function reviewItemIds() {
+  return getReviewItemIds(progress, activeItems().map((item) => item.id));
+}
+
+function renderReviewControl() {
+  const count = reviewItemIds().length;
+  elements.reviewToggle.disabled = count === 0 && !reviewMode;
+  elements.reviewToggle.classList.toggle("is-active", reviewMode);
+  elements.reviewToggle.setAttribute("aria-pressed", String(reviewMode));
+  elements.reviewToggleLabel.textContent = reviewMode ? "退出回顾" : "错题回顾";
+  elements.reviewCount.textContent = count;
+  elements.reviewCount.setAttribute("aria-label", `${count} 道错题`);
 }
 
 function cancelQuestionTransition() {
@@ -133,6 +153,7 @@ function cancelQuestionTransition() {
 
 function selectUnit(unitId) {
   cancelQuestionTransition();
+  reviewMode = false;
   activeUnit = units.find((unit) => unit.id === unitId) || units[0];
   saveActiveUnit(activeUnit.id);
   progress = loadProgress(activeUnit.id, activeItems().map((item) => item.id));
@@ -175,7 +196,17 @@ async function showPage(page) {
 }
 
 function nextQuestion() {
-  const items = activeItems();
+  let items = activeItems();
+  if (reviewMode) {
+    const ids = new Set(reviewItemIds());
+    items = items.filter((item) => ids.has(item.id));
+    if (!items.length) {
+      reviewMode = false;
+      items = activeItems();
+      renderReviewControl();
+      showToast("本单元的错题已完成回顾");
+    }
+  }
   const id = pickNextItem(progress, Math.random, items.map((item) => item.id));
   const item = items.find((entry) => entry.id === id);
   if (!item) {
@@ -230,7 +261,7 @@ function renderQuestion() {
   elements.revealActions.classList.remove("has-two-actions");
 
   if (!current) {
-    elements.modeLabel.textContent = "先添加词库，再开始练习";
+    setModeLabel("先添加词库，再开始练习");
     elements.scriptTag.textContent = "空词库";
     elements.scriptTag.lang = "zh-CN";
     elements.prompt.textContent = "这个单元还没有单词";
@@ -249,7 +280,7 @@ function renderQuestion() {
   elements.revealActions.classList.toggle("has-two-actions", direction === "romajiToKana");
 
   if (vocabularyMode) {
-    elements.modeLabel.textContent = validationMode ? "看中文，输入单词假名" : "看中文释义，回忆日文单词";
+    setModeLabel(validationMode ? "看中文，输入单词假名" : "看中文释义，回忆日文单词");
     elements.scriptTag.textContent = "中文释义";
     elements.scriptTag.lang = "zh-CN";
     elements.prompt.textContent = item.meaning;
@@ -261,7 +292,7 @@ function renderQuestion() {
     elements.answerDetail.textContent = `假名：${item.kana}　·　声调：${item.accent} 型`;
     if (!validationMode) elements.revealActions.append(makeButton("查看答案", "button-reveal", (event) => revealAnswer(undefined, event.currentTarget), "space"));
   } else if (direction === "kanaToRomaji") {
-    elements.modeLabel.textContent = "看假名，回忆罗马音";
+    setModeLabel("看假名，回忆罗马音");
     elements.scriptTag.textContent = script === "hiragana" ? "平假名" : "片假名";
     elements.scriptTag.lang = "zh-CN";
     elements.prompt.textContent = kana;
@@ -279,7 +310,7 @@ function renderQuestion() {
       );
     }
   } else {
-    elements.modeLabel.textContent = "看罗马音，回忆两种假名";
+    setModeLabel("看罗马音，回忆两种假名");
     elements.scriptTag.textContent = "罗马音";
     elements.scriptTag.lang = "en";
     elements.prompt.textContent = item.romaji;
@@ -308,6 +339,10 @@ function renderQuestion() {
   if (validationMode) renderValidationArea();
 }
 
+function setModeLabel(text) {
+  elements.modeLabel.textContent = reviewMode ? `错题回顾 · ${text}` : text;
+}
+
 function renderValidationArea() {
   elements.validationArea.replaceChildren();
   const validation = current.validation;
@@ -331,7 +366,7 @@ function renderValidationArea() {
   abandon.type = "button";
   abandon.className = "text-button validation-abandon";
   abandon.textContent = "这题先跳过";
-  abandon.addEventListener("click", () => finishValidation("forgot"));
+  abandon.addEventListener("click", () => finishValidation("forgot", { skipped: true }));
   elements.validationArea.append(abandon);
 }
 
@@ -597,19 +632,23 @@ function maybeFinishValidation() {
   }
 }
 
-function finishValidation(result) {
+function finishValidation(result, { skipped = false } = {}) {
   if (!current || transitionLocked) return;
   if (activeUnit.kind === "vocabulary") {
     Object.values(current.validation.fields).forEach((field) => lockValidationField(field));
     revealAnswer();
     elements.validationArea.querySelector(".validation-abandon").hidden = true;
     const next = makeButton("下一题", "button-primary validation-next", () => {
+      elements.validationArea.replaceChildren();
       transitionLocked = false;
       nextQuestion();
     });
     elements.validationArea.append(next);
-    answer(result, { waitForNext: true });
-  } else answer(result);
+    answer(result, {
+      waitForNext: true,
+      markForReview: skipped || result === "forgot" || current.validation.hadMistake,
+    });
+  } else answer(result, { markForReview: skipped || result === "forgot" || current.validation.hadMistake });
 }
 
 function makeButton(label, className, onClick, shortcut) {
@@ -661,19 +700,21 @@ function revealAnswer(kanaOnly, clickedButton) {
   elements.forgotButton.classList.add("pulse");
 }
 
-function answer(result, { waitForNext = false } = {}) {
+function answer(result, { waitForNext = false, markForReview = result === "forgot" } = {}) {
   if (!current || transitionLocked || currentPage !== "practice") return;
   transitionLocked = true;
   elements.practiceCard.classList.add(result === "known" ? "is-known" : "is-forgot");
   elements.knownButton.disabled = true;
   elements.forgotButton.disabled = true;
 
-  progress = recordAnswer(progress, current.item.id, result);
+  const reviewBefore = progress.review?.[current.item.id];
+  progress = recordAnswer(progress, current.item.id, result, new Date(), { reviewMode, markForReview });
+  const reviewAfter = progress.review?.[current.item.id];
   if (!saveProgress(progress, activeUnit.id)) showToast("练习记录暂未保存，浏览器存储不可用");
   sessionCount += 1;
   elements.sessionCount.textContent = sessionCount;
   renderStats();
-  showFeedback(result, current.item);
+  showFeedback(result, current.item, { reviewBefore, reviewAfter, markForReview });
 
   if (!waitForNext) {
     questionTimer = window.setTimeout(() => {
@@ -686,11 +727,17 @@ function answer(result, { waitForNext = false } = {}) {
   maybeShowMilestone(today);
 }
 
-function showFeedback(result, item) {
+function showFeedback(result, item, { reviewBefore, reviewAfter, markForReview } = {}) {
   const label = item.japanese || item.hiragana;
-  elements.feedbackFlash.textContent = result === "known"
-    ? `记住了 ${label} · 出现概率已调低`
-    : `${label} 已记下 · 下次会更常出现`;
+  if (reviewMode && reviewBefore && !reviewAfter) {
+    elements.feedbackFlash.textContent = `${label} 已答对 2 次 · 移出错题本`;
+  } else if (reviewMode && reviewAfter?.correct === 1 && !markForReview) {
+    elements.feedbackFlash.textContent = `${label} 回顾答对 1 / 2`;
+  } else if (markForReview) {
+    elements.feedbackFlash.textContent = `${label} 已加入错题本 · 下次会更常出现`;
+  } else {
+    elements.feedbackFlash.textContent = `记住了 ${label} · 出现概率已调低`;
+  }
   elements.feedbackFlash.className = `feedback-flash show ${result}`;
   window.clearTimeout(showFeedback.timer);
   showFeedback.timer = window.setTimeout(() => {
@@ -727,6 +774,7 @@ function renderStats() {
 
   renderWeekChart();
   renderWeakList();
+  renderReviewControl();
 }
 
 function renderWeekChart() {
@@ -867,6 +915,13 @@ function bindEvents() {
   elements.knownButton.addEventListener("click", () => answer("known"));
   elements.forgotButton.addEventListener("click", () => answer("forgot"));
   elements.validationMode.addEventListener("change", toggleValidationMode);
+  elements.reviewToggle.addEventListener("click", () => {
+    if (!reviewMode && !reviewItemIds().length) return;
+    cancelQuestionTransition();
+    reviewMode = !reviewMode;
+    renderReviewControl();
+    nextQuestion();
+  });
 
   document.querySelector("#continue-button").addEventListener("click", () => closeModal(elements.milestoneModal));
   document.querySelector("#finish-button").addEventListener("click", () => {
@@ -885,6 +940,7 @@ function bindEvents() {
     if (!(await confirmAction(`清除「${activeUnit.name}」的练习记录和概率数据后无法恢复。课程词库会保留。`, { title: "清除当前单元记录？", confirmLabel: "清除记录" }))) return;
     if (!clearProgress(activeUnit.id)) return showToast("清除失败，请检查浏览器存储后重试");
     progress = loadProgress(activeUnit.id, activeItems().map((item) => item.id));
+    reviewMode = false;
     sessionCount = 0;
     milestoneShownFor = null;
     elements.sessionCount.textContent = "0";

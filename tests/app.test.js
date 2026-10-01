@@ -70,6 +70,7 @@ test("vocabulary validation shows only Chinese and gives 3 attempts; a later cor
   assert.equal(progress().weights[word.id].weight, 0.72);
   assert.equal(progress().totalAnswered, 1);
   assert.equal(progress().totalForgot, 0);
+  assert.deepEqual(progress().review[word.id], { correct: 0 });
   doc.querySelector(".button-check").click();
   assert.equal(progress().totalAnswered, 1);
   assert.ok(doc.querySelector(".validation-next"));
@@ -91,6 +92,39 @@ test("only the third failed attempt reveals kana and Japanese and increases the 
   assert.equal(progress().weights[word.id].weight, 2.1);
   assert.equal(progress().totalForgot, 1);
   assert.equal(doc.querySelector(".validation-field input").disabled, true);
+});
+
+test("skipping records a review item and the following question restores the skip action", () => {
+  validationOn();
+  doc.querySelector(".validation-abandon").click();
+  assert.deepEqual(progress().review[word.id], { correct: 0 });
+  assert.ok(doc.querySelector(".validation-next"));
+  doc.querySelector(".validation-next").click();
+  assert.ok(doc.querySelector(".validation-abandon"));
+  assert.equal(doc.querySelector(".validation-next"), null);
+});
+
+test("review mode removes a wrong item after two correct answers", async () => {
+  validationOn();
+  doc.querySelector(".validation-abandon").click();
+  doc.querySelector(".validation-next").click();
+  const reviewToggle = doc.querySelector("#review-toggle");
+  assert.equal(reviewToggle.disabled, false);
+  assert.equal(doc.querySelector("#review-count").textContent, "1");
+
+  reviewToggle.click();
+  assert.equal(reviewToggle.getAttribute("aria-pressed"), "true");
+  assert.match(doc.querySelector("#mode-label").textContent, /^错题回顾/);
+  await submit(word.kana);
+  assert.deepEqual(progress().review[word.id], { correct: 1 });
+  doc.querySelector(".validation-next").click();
+  await submit(word.kana);
+  assert.equal(progress().review[word.id], undefined);
+  doc.querySelector(".validation-next").click();
+  assert.equal(reviewToggle.getAttribute("aria-pressed"), "false");
+  assert.equal(reviewToggle.disabled, true);
+  assert.equal(doc.querySelector("#review-count").textContent, "0");
+  assert.equal(doc.querySelector(".validation-abandon") !== null, true);
 });
 
 test("Japanese IME Enter cannot consume an attempt, and the global switch remains available in the manager", async () => {

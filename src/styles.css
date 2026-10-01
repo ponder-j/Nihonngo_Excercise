@@ -1491,6 +1491,51 @@ body.modal-open {
   white-space: nowrap;
 }
 
+.review-toggle {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.review-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.review-toggle:hover:not(:disabled),
+.review-toggle.is-active {
+  border-color: rgba(66, 107, 155, 0.3);
+  color: var(--primary-strong);
+  background: var(--indigo-soft);
+}
+
+.review-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.review-count {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding-inline: 5px;
+  border-radius: 6px;
+  color: var(--primary-strong);
+  background: rgba(66, 107, 155, 0.1);
+  font-size: 11px;
+}
+
 #edit-current-unit {
   margin-left: auto;
   white-space: nowrap;
@@ -1903,8 +1948,12 @@ input::placeholder {
 
 
   #edit-current-unit {
-    order: 4;
+    order: 5;
     padding: 0;
+  }
+
+  .review-toggle {
+    order: 4;
   }
 
   .manage-heading {

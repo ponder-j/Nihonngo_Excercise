@@ -75,7 +75,9 @@ test("custom cards are selected only from their unit and avoid consecutive repea
   }
   assert.equal(pickNextItem(progress, () => 0, ["one"]), "one");
   assert.equal(pickNextItem(progress, () => 0, []), null);
-  assert.deepEqual(normalizeProgress(progress, ["one", "two"]).recent, ["one"]);
+  const normalized = normalizeProgress(progress, ["one", "two"]);
+  assert.deepEqual(normalized.recent, ["one"]);
+  assert.deepEqual(normalized.review, {});
 });
 
 test("custom weights favor forgotten cards and scoped mastery ignores deleted words", () => {

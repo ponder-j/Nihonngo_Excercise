@@ -21,6 +21,7 @@ export function createInitialProgress() {
     weights: {},
     daily: {},
     recent: [],
+    review: {},
     totalAnswered: 0,
     totalForgot: 0,
   };
@@ -30,14 +31,25 @@ export function normalizeProgress(value, itemIds = KANA_IDS) {
   const initial = createInitialProgress();
   if (!value || typeof value !== "object" || value.version !== APP_VERSION) return initial;
 
+  const review = Object.fromEntries(
+    Object.entries(value.review && typeof value.review === "object" ? value.review : {})
+      .filter(([id]) => itemIds.includes(id))
+      .map(([id, entry]) => [id, { correct: Number(entry?.correct) === 1 ? 1 : 0 }]),
+  );
+
   return {
     ...initial,
     weights: value.weights && typeof value.weights === "object" ? value.weights : {},
     daily: value.daily && typeof value.daily === "object" ? value.daily : {},
     recent: Array.isArray(value.recent) ? value.recent.filter((id) => itemIds.includes(id)) : [],
+    review,
     totalAnswered: Number(value.totalAnswered) || 0,
     totalForgot: Number(value.totalForgot) || 0,
   };
+}
+
+export function getReviewItemIds(progress, itemIds = KANA_IDS) {
+  return itemIds.filter((id) => Boolean(progress.review?.[id]));
 }
 
 export function weightFor(progress, id) {
@@ -83,7 +95,8 @@ export function pickPrompt(random = Math.random) {
   return { direction, script };
 }
 
-export function recordAnswer(progress, itemId, result, date = new Date()) {
+export function recordAnswer(progress, itemId, result, date = new Date(), options = {}) {
+  const { reviewMode = false, markForReview = result === "forgot" } = options;
   const currentWeight = weightFor(progress, itemId);
   const nextWeight = updateWeight(currentWeight, result);
   const existingItem = progress.weights?.[itemId] ?? {
@@ -98,6 +111,16 @@ export function recordAnswer(progress, itemId, result, date = new Date()) {
     forgot: 0,
     known: 0,
   };
+  const review = { ...(progress.review ?? {}) };
+  const reviewEntry = review[itemId];
+
+  if (markForReview) {
+    if (!reviewEntry) review[itemId] = { correct: 0 };
+  } else if (reviewMode && reviewEntry) {
+    const correct = result === "known" ? (reviewEntry.correct ?? 0) + 1 : 0;
+    if (correct >= 2) delete review[itemId];
+    else review[itemId] = { correct };
+  }
 
   return {
     ...progress,
@@ -121,6 +144,7 @@ export function recordAnswer(progress, itemId, result, date = new Date()) {
       },
     },
     recent: [itemId, ...(progress.recent ?? []).filter((id) => id !== itemId)].slice(0, RECENT_WINDOW),
+    review,
     totalAnswered: progress.totalAnswered + 1,
     totalForgot: progress.totalForgot + (result === "forgot" ? 1 : 0),
   };

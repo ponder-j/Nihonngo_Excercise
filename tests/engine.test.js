@@ -5,6 +5,7 @@ import {
   getDailyStats,
   getMasteredCount,
   getRecentDays,
+  getReviewItemIds,
   getWeakItems,
   pickNextItem,
   pickPrompt,
@@ -48,6 +49,27 @@ test("recordAnswer updates item and daily statistics", () => {
   assert.equal(progress.totalAnswered, 1);
   assert.equal(progress.totalForgot, 1);
   assert.equal(progress.weights.a.forgot, 1);
+});
+
+test("wrong answers enter review and two correct review answers remove the item", () => {
+  let progress = recordAnswer(createInitialProgress(), "a", "forgot");
+  assert.deepEqual(getReviewItemIds(progress), ["a"]);
+  assert.deepEqual(progress.review.a, { correct: 0 });
+
+  progress = recordAnswer(progress, "a", "known", new Date(), { reviewMode: true });
+  assert.deepEqual(progress.review.a, { correct: 1 });
+  progress = recordAnswer(progress, "a", "forgot", new Date(), { reviewMode: true });
+  assert.deepEqual(progress.review.a, { correct: 1 });
+  progress = recordAnswer(progress, "a", "known", new Date(), { reviewMode: true });
+  assert.equal(progress.review.a, undefined);
+  assert.deepEqual(getReviewItemIds(progress), []);
+});
+
+test("a validation mistake can mark a later correct answer for review", () => {
+  const progress = recordAnswer(createInitialProgress(), "a", "known", new Date(), { markForReview: true });
+  assert.deepEqual(progress.review.a, { correct: 0 });
+  assert.equal(progress.weights.a.known, 1);
+  assert.equal(progress.totalForgot, 0);
 });
 
 test("recent days are ordered and include zero-fill days", () => {
