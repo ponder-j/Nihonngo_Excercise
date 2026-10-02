@@ -8,7 +8,7 @@ import { build } from "vite";
 const word = { id: "word-1", japanese: "中国人", kana: "ちゅうごくじん", accent: 4, meaning: "中国人" };
 const lesson = { id: "lesson-1", name: "第一课", kind: "vocabulary", words: [word] };
 const settle = () => new Promise((resolve) => setImmediate(resolve));
-let code, html, dom, doc, snapshot, requests;
+let code, html, dom, doc, snapshot, requests, audioClips;
 
 before(async () => {
   html = await readFile(new URL("../index.html", import.meta.url), "utf8");
@@ -20,6 +20,17 @@ beforeEach(async () => {
   doc = dom.window.document;
   snapshot = { library: { version: 1, units: [structuredClone(lesson)] }, revision: '"v1"', imports: [] };
   requests = [];
+  audioClips = [];
+  dom.window.Audio = function (src) {
+    const audio = doc.createElement("audio");
+    if (src) audio.src = src;
+    audio.pauseCalls = 0;
+    audio.play = async () => audio.dispatchEvent(new dom.window.Event("playing"));
+    audio.pause = () => { audio.pauseCalls += 1; };
+    audio.load = () => {};
+    audioClips.push(audio);
+    return audio;
+  };
   Object.defineProperty(dom.window.crypto, "randomUUID", { value: randomUUID });
   dom.window.fetch = async (url, options = {}) => {
     requests.push({ url, options });
@@ -51,6 +62,66 @@ async function submit(value) {
 function progress() {
   return JSON.parse(dom.window.localStorage.getItem("kana-loop-unit-progress-v1:lesson-1"));
 }
+
+test("pronunciation is requested only on click after reveal and uses the stored Japanese reading", async () => {
+  const button = doc.querySelector("#pronunciation-button");
+  button.click();
+  assert.equal(audioClips.length, 0);
+  assert.equal(button.disabled, true);
+  doc.querySelector("#reveal-actions button").click();
+  assert.equal(button.disabled, false);
+  assert.equal(audioClips.length, 0);
+  button.click();
+  await settle();
+  const url = new URL(audioClips[0].src);
+  assert.equal(url.searchParams.get("audio"), word.kana);
+  assert.equal(url.searchParams.get("le"), "jap");
+  assert.equal(button.dataset.state, "playing");
+  assert.equal(progress(), null);
+  audioClips[0].dispatchEvent(new dom.window.Event("ended"));
+  assert.equal(button.dataset.state, "idle");
+  button.click();
+  await settle();
+  assert.equal(audioClips.length, 2);
+  button.click();
+  assert.equal(button.dataset.state, "idle");
+  assert.ok(audioClips[1].pauseCalls > 0);
+});
+
+test("completed vocabulary validation allows pronunciation and next question stops playback", async () => {
+  validationOn();
+  await submit(word.kana);
+  const button = doc.querySelector("#pronunciation-button");
+  button.click();
+  await settle();
+  assert.equal(button.dataset.state, "playing");
+  assert.equal(progress().totalAnswered, 1);
+  doc.querySelector(".validation-next").click();
+  assert.ok(audioClips[0].pauseCalls > 0);
+  assert.equal(button.dataset.state, "idle");
+  assert.equal(button.disabled, true);
+  assert.equal(doc.querySelector("#answer-panel").hidden, true);
+});
+
+test("changing modes or leaving practice cancels speech without recording an answer", async () => {
+  doc.querySelector("#reveal-actions button").click();
+  doc.querySelector("#pronunciation-button").click();
+  await settle();
+  validationOn();
+  assert.ok(audioClips[0].pauseCalls > 0);
+  assert.equal(doc.querySelector("#pronunciation-button").disabled, true);
+  const toggle = doc.querySelector("#validation-mode");
+  toggle.checked = false;
+  toggle.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  doc.querySelector("#reveal-actions button").click();
+  doc.querySelector("#pronunciation-button").click();
+  await settle();
+  doc.querySelector("#manage-nav").click();
+  await settle();
+  assert.ok(audioClips[1].pauseCalls > 0);
+  assert.equal(doc.querySelector("#pronunciation-button").dataset.state, "idle");
+  assert.equal(progress(), null);
+});
 
 test("vocabulary validation shows only Chinese and gives 3 attempts; a later correct answer records known once", async () => {
   validationOn();

@@ -18,6 +18,7 @@ import { toLibrary } from "./library-format.js";
 import { createUnitSelect } from "./unit-select.js";
 import { icon, renderIcons } from "./icons.js";
 import { confirmAction } from "./confirm.js";
+import { createPronunciationPlayer, getPronunciationText } from "./pronunciation.js";
 import {
   getValidationFields,
   matchesValidationAnswer,
@@ -49,6 +50,7 @@ const elements = {
   answerLabel: document.querySelector(".answer-label"),
   answerValue: document.querySelector("#answer-value"),
   answerDetail: document.querySelector("#answer-detail"),
+  pronunciationButton: document.querySelector("#pronunciation-button"),
   revealActions: document.querySelector("#reveal-actions"),
   validationArea: document.querySelector("#validation-area"),
   judgementActions: document.querySelector("#judgement-actions"),
@@ -93,6 +95,11 @@ let sessionCount = 0;
 let transitionLocked = false;
 let milestoneShownFor = null;
 let reviewMode = false;
+let pronunciationState = "idle";
+const pronunciationPlayer = createPronunciationPlayer({
+  onStateChange: renderPronunciationState,
+  onError: showToast,
+});
 const libraryClient = createLibraryClient({ baseUrl: import.meta.env.BASE_URL });
 const unitSelect = createUnitSelect({ root: elements.unitSelect, onChange: selectUnit });
 renderIcons();
@@ -145,6 +152,7 @@ function renderReviewControl() {
 }
 
 function cancelQuestionTransition() {
+  pronunciationPlayer.stop();
   window.clearTimeout(questionTimer);
   transitionLocked = false;
   current = null;
@@ -240,6 +248,8 @@ function createValidationState(prompt, item) {
 }
 
 function renderQuestion() {
+  pronunciationPlayer.stop();
+  elements.pronunciationButton.disabled = true;
   const validationMode = isValidationMode();
   const vocabularyMode = activeUnit.kind === "vocabulary";
   elements.questionLabel.textContent = activeUnit.name;
@@ -341,6 +351,23 @@ function renderQuestion() {
 
 function setModeLabel(text) {
   elements.modeLabel.textContent = reviewMode ? `错题回顾 · ${text}` : text;
+}
+
+function renderPronunciationState(state) {
+  pronunciationState = state;
+  const button = elements.pronunciationButton;
+  const label = state === "loading" ? "正在加载发音，点击取消" : state === "playing" ? "停止日语发音" : "播放日语发音";
+  button.dataset.state = state;
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-busy", String(state === "loading"));
+  button.title = label;
+  button.replaceChildren(icon(state === "loading" ? "loading" : state === "playing" ? "stop" : "volume"));
+}
+
+function togglePronunciation() {
+  if (!current || currentPage !== "practice" || elements.answerPanel.hidden) return;
+  if (pronunciationState !== "idle") pronunciationPlayer.stop();
+  else pronunciationPlayer.play(getPronunciationText(current.item));
 }
 
 function renderValidationArea() {
@@ -673,6 +700,7 @@ function revealAnswer(kanaOnly, clickedButton) {
   elements.answerPanel.hidden = false;
   elements.answerPanel.classList.add("is-visible");
   elements.practiceCard.classList.add("is-revealed");
+  elements.pronunciationButton.disabled = !getPronunciationText(current.item);
 
   if (clickedButton) {
     clickedButton.disabled = true;
@@ -702,6 +730,7 @@ function revealAnswer(kanaOnly, clickedButton) {
 
 function answer(result, { waitForNext = false, markForReview = result === "forgot" } = {}) {
   if (!current || transitionLocked || currentPage !== "practice") return;
+  pronunciationPlayer.stop();
   transitionLocked = true;
   elements.practiceCard.classList.add(result === "known" ? "is-known" : "is-forgot");
   elements.knownButton.disabled = true;
@@ -904,6 +933,11 @@ function openDataModal() {
 }
 
 function bindEvents() {
+  elements.pronunciationButton.addEventListener("click", togglePronunciation);
+  window.addEventListener("pagehide", () => pronunciationPlayer.stop());
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pronunciationPlayer.stop();
+  });
   document.querySelector("#practice-nav").addEventListener("click", () => {
     if (currentPage !== "practice") showPage("practice");
   });

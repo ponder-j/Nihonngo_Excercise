@@ -394,6 +394,40 @@ h2 {
   line-height: 1.2;
 }
 
+.answer-reading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.answer-reading .answer-value {
+  min-width: 0;
+}
+
+.pronunciation-button {
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+}
+
+.pronunciation-button[data-state="loading"],
+.pronunciation-button[data-state="playing"] {
+  background: var(--indigo-soft);
+}
+
+.pronunciation-button[data-state="loading"] svg {
+  animation: pronunciation-spin 1s linear infinite;
+}
+
+@keyframes pronunciation-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pronunciation-button[data-state="loading"] svg { animation: none; }
+}
+
 .answer-detail {
   margin-top: 5px;
   color: var(--muted);

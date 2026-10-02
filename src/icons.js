@@ -1,6 +1,6 @@
-import { BookOpenCheck, createElement, ChartNoAxesColumnIncreasing, Check, ChevronDown, RotateCcw, X } from "lucide";
+import { BookOpenCheck, createElement, ChartNoAxesColumnIncreasing, Check, ChevronDown, LoaderCircle, RotateCcw, Square, Volume2, X } from "lucide";
 
-const icons = { chart: ChartNoAxesColumnIncreasing, check: Check, "chevron-down": ChevronDown, reset: RotateCcw, close: X, review: BookOpenCheck };
+const icons = { chart: ChartNoAxesColumnIncreasing, check: Check, "chevron-down": ChevronDown, reset: RotateCcw, close: X, review: BookOpenCheck, volume: Volume2, stop: Square, loading: LoaderCircle };
 export function icon(name) {
   return createElement(icons[name], { width: 18, height: 18, "stroke-width": 1.8, "aria-hidden": "true", focusable: "false" });
 }

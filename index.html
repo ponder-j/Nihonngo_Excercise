@@ -90,7 +90,12 @@
             <p class="prompt-hint" id="prompt-hint">先在心里读出来，再决定要不要显示答案。</p>
             <div class="answer-panel" id="answer-panel" aria-live="polite" hidden>
               <span class="answer-label">答案</span>
-              <div class="answer-value" id="answer-value"></div>
+              <div class="answer-reading">
+                <div class="answer-value" id="answer-value"></div>
+                <button class="icon-button pronunciation-button" id="pronunciation-button" type="button" aria-label="播放日语发音" title="播放日语发音" data-state="idle" disabled>
+                  <span data-icon="volume"></span>
+                </button>
+              </div>
               <div class="answer-detail" id="answer-detail"></div>
             </div>
           </div>
