@@ -193,10 +193,10 @@
         <div class="manage-layout">
           <aside class="unit-library" aria-label="已有单元">
             <div class="library-heading"><strong>全部单元</strong><span>选择后编辑</span></div>
-            <div id="unit-list" class="unit-list"></div>
+            <div id="unit-list" class="unit-list" role="region" aria-label="全部单元" tabindex="0"></div>
             <div id="imports-section" hidden>
               <div class="library-heading"><strong>待审核导入</strong></div>
-              <div id="import-list" class="unit-list"></div>
+              <div id="import-list" class="unit-list" role="region" aria-label="待审核导入" tabindex="0"></div>
             </div>
             <p class="library-note" id="library-storage-note"></p>
             <button class="text-button" id="migrate-library-button" type="button" hidden>迁移浏览器中的单元</button>
@@ -218,7 +218,7 @@
               <div class="word-table-head" aria-hidden="true"><span>#</span><span>日文（汉字 / 假名）</span><span>假名拼写</span><span>声调类型</span><span>中文释义</span><span></span></div>
               <div id="word-rows" class="word-rows"></div>
               <button class="text-button add-word-button" id="add-word-button" type="button">＋ 添加一行单词</button>
-              <p class="word-entry-note">日文有汉字就填汉字，无汉字则填假名。声调填 0、1、2 等数字。回车确认后，点击下方按钮保存整个词库。</p>
+              <p class="word-entry-note">日文有汉字就填汉字，无汉字则填假名。未知读音或声调可填“待校对”；补全读音后才会进入练习。回车确认后保存词库。</p>
               <div class="editor-save-bar"><span>完成录入后统一保存</span><button class="button button-primary" id="save-unit-button" type="submit">保存单元</button></div>
             </form>
             <p class="editor-status" id="editor-status" role="status" aria-live="polite"></p>

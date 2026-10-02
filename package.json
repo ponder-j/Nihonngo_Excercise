@@ -11,6 +11,7 @@
     "start": "node server.mjs",
     "ocr-server": "node ocr-server.mjs",
     "vocab:import": "node .agents/skills/nihongo-vocabulary-import/scripts/import-vocabulary.mjs",
+    "vocab:import-biaori": "node scripts/import-biaori.mjs",
     "service:install": "node scripts/install-service.mjs",
     "service:uninstall": "node scripts/uninstall-service.mjs"
   },

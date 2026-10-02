@@ -2,6 +2,7 @@ import { kanaItems } from "./kana.js";
 
 export const KANA_UNIT_ID = "kana";
 export const LIBRARY_VERSION = 1;
+export const REVIEW_PLACEHOLDER = "待校对";
 export const KANA_UNIT = Object.freeze({
   id: KANA_UNIT_ID,
   name: "假名练习单元",
@@ -11,7 +12,7 @@ export const KANA_UNIT = Object.freeze({
 export const WORD_FIELDS = [
   { key: "japanese", label: "日文", placeholder: "中国人", lang: "ja" },
   { key: "kana", label: "假名拼写", placeholder: "ちゅうごくじん", lang: "ja" },
-  { key: "accent", label: "声调类型", placeholder: "0", inputMode: "numeric" },
+  { key: "accent", label: "声调类型", placeholder: "0 或待校对" },
   { key: "meaning", label: "中文释义", placeholder: "中国人", lang: "zh-CN" },
 ];
 
@@ -21,6 +22,14 @@ export function createId(prefix) {
 
 export function getUnitItems(unit) {
   return unit.kind === "kana" ? kanaItems : unit.words;
+}
+
+export function isPracticeReady(word) {
+  return word.kana !== REVIEW_PLACEHOLDER && word.meaning !== REVIEW_PLACEHOLDER;
+}
+
+export function formatAccent(accent) {
+  return accent === REVIEW_PLACEHOLDER ? REVIEW_PLACEHOLDER : `${accent} 型`;
 }
 
 export function isBlankWord(word) {
@@ -33,13 +42,19 @@ export function validateWord(word) {
     if (!normalized[key]) return { valid: false, field: key, message: `请填写${label}` };
   }
   normalized.accent = normalized.accent.normalize("NFKC");
-  if (!/^\d+$/.test(normalized.accent) || !Number.isSafeInteger(Number(normalized.accent))) {
-    return { valid: false, field: "accent", message: "声调类型请填写 0、1、2 等非负整数" };
+  if (normalized.accent !== REVIEW_PLACEHOLDER
+    && (!/^\d+$/.test(normalized.accent) || !Number.isSafeInteger(Number(normalized.accent)))) {
+    return { valid: false, field: "accent", message: "声调类型请填写 0、1、2 等非负整数，或填“待校对”" };
   }
-  if (!/^[\p{Script=Hiragana}\p{Script=Katakana}ー・\s]+$/u.test(normalized.kana)) {
+  if (normalized.kana !== REVIEW_PLACEHOLDER
+    && !/^[\p{Script=Hiragana}\p{Script=Katakana}ー・\s]+$/u.test(normalized.kana)) {
     return { valid: false, field: "kana", message: "假名拼写请使用平假名或片假名" };
   }
-  return { valid: true, word: { id: word.id || createId("word"), ...normalized, accent: Number(normalized.accent) } };
+  return { valid: true, word: {
+    id: word.id || createId("word"),
+    ...normalized,
+    accent: normalized.accent === REVIEW_PLACEHOLDER ? REVIEW_PLACEHOLDER : Number(normalized.accent),
+  } };
 }
 
 export function validateUnit(unit) {

@@ -4,7 +4,7 @@
 
 ## 正式词库
 
-仓库文件：`public/data/units.json`。结构是 `{ "version": 1, "units": [...] }`。每个单元包含 `id`、`name`、`kind: "vocabulary"`、`words`；每个单词包含稳定 `id`、`japanese`、`kana`、非负整数 `accent`、`meaning`。内置 71 个假名由程序提供，不重复写入文件。完整规范见 `units.schema.json`。
+仓库文件：`public/data/units.json`。结构是 `{ "version": 1, "units": [...] }`。每个单元包含 `id`、`name`、`kind: "vocabulary"`、`words`；每个单词包含稳定 `id`、`japanese`、`kana`、`accent`、`meaning`。声调为非负整数或文字占位符 `待校对`；缺失读音也可用 `待校对`，补全前不参与练习。内置 71 个假名由程序提供，不重复写入文件。完整规范见 `units.schema.json`。
 
 - `GET /api/health`：确认服务与词库可读，返回 `{ "ok": true, "storage": "file", "version": 1 }`。
 - `GET /api/library`：返回 `{ library, revision, imports }`，响应 `ETag` 等于 `revision`。

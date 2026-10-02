@@ -11,7 +11,7 @@ import {
   recordAnswer,
 } from "./engine.js";
 import { clearProgress, loadActiveUnit, loadProgress, loadUnits, saveActiveUnit, saveProgress } from "./store.js";
-import { getUnitItems } from "./units.js";
+import { formatAccent, getUnitItems, isPracticeReady } from "./units.js";
 import { createUnitManager } from "./unit-manager.js";
 import { createLibraryClient } from "./library-client.js";
 import { toLibrary } from "./library-format.js";
@@ -122,7 +122,8 @@ const unitManager = createUnitManager({
 });
 
 function activeItems() {
-  return getUnitItems(activeUnit);
+  const items = getUnitItems(activeUnit);
+  return activeUnit.kind === "kana" ? items : items.filter(isPracticeReady);
 }
 
 function isValidationMode() {
@@ -131,7 +132,9 @@ function isValidationMode() {
 
 function renderUnitPicker() {
   unitSelect.render(units, activeUnit.id);
-  elements.unitSize.textContent = `${activeItems().length} 个${activeUnit.kind === "kana" ? "假名" : "单词"}`;
+  const total = getUnitItems(activeUnit).length;
+  const ready = activeItems().length;
+  elements.unitSize.textContent = `${total} 个${activeUnit.kind === "kana" ? "假名" : "单词"}${total > ready ? ` · ${total - ready} 待补全` : ""}`;
   elements.validationSwitch.hidden = false;
   document.querySelector("#weak-title").textContent = activeUnit.kind === "kana" ? "薄弱假名" : "薄弱单词";
   renderReviewControl();
@@ -274,7 +277,7 @@ function renderQuestion() {
     setModeLabel("先添加词库，再开始练习");
     elements.scriptTag.textContent = "空词库";
     elements.scriptTag.lang = "zh-CN";
-    elements.prompt.textContent = "这个单元还没有单词";
+    elements.prompt.textContent = "这个单元还没有可练习的单词";
     elements.prompt.lang = "zh-CN";
     elements.prompt.classList.remove("is-romaji");
     elements.prompt.classList.add("is-empty");
@@ -299,7 +302,7 @@ function renderQuestion() {
     elements.promptHint.textContent = validationMode ? "输入平假名即可，最多尝试三次。" : "想一想日文写法、读音和声调，再查看答案。";
     elements.answerLabel.textContent = "日文答案";
     elements.answerValue.textContent = item.japanese;
-    elements.answerDetail.textContent = `假名：${item.kana}　·　声调：${item.accent} 型`;
+    elements.answerDetail.textContent = `假名：${item.kana}　·　声调：${formatAccent(item.accent)}`;
     if (!validationMode) elements.revealActions.append(makeButton("查看答案", "button-reveal", (event) => revealAnswer(undefined, event.currentTarget), "space"));
   } else if (direction === "kanaToRomaji") {
     setModeLabel("看假名，回忆罗马音");
@@ -859,7 +862,7 @@ function renderWeakList() {
     const label = document.createElement("strong");
     label.textContent = activeUnit.kind === "kana" ? `${item.hiragana} · ${item.katakana}` : item.japanese;
     const detail = document.createElement("small");
-    detail.textContent = activeUnit.kind === "kana" ? item.romaji : `${item.kana} · ${item.accent} 型 · ${item.meaning}`;
+    detail.textContent = activeUnit.kind === "kana" ? item.romaji : `${item.kana} · ${formatAccent(item.accent)} · ${item.meaning}`;
     copy.append(label, detail);
     const counts = document.createElement("span");
     counts.className = "weak-count";

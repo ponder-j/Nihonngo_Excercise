@@ -106,6 +106,8 @@ git push origin main
 
 本地服务点击「保存单元」会写入 `public/data/units.json`，保存前自动备份到 `.local-data/backups/`。旧 localStorage 单元可通过「迁移浏览器中的单元」合并进文件；其他域名或设备中的旧单元可先导出词库，再在本地「导入 JSON」。同 ID 不同内容会保留为副本。
 
+来自相邻 `biaori` 项目的词表可运行 `npm run vocab:import-biaori` 导入。脚本跳过已有的第一课，按课程建立其余单元；再次运行会保留已存在课程的人工修改。导入词的声调为 `待校对`，源条目缺少读音或中文时也用此占位符，补全前不参与练习。多写法、注音标记等需重点核对的条目列在本地 `.local-data/biaori-import-review.json`。编辑器可将声调逐条改为非负整数后保存。运行 `npm run vocab:import-biaori -- --dry-run` 可先查看导入规模。
+
 GitHub Pages 启动时读取仓库发布的词库文件。线上临时新增、修改和删除只影响当前浏览器，可导出后导入本地服务。确认本地文件后，提交并推送到 `main`，Actions 自动测试、构建和部署词库。学习记录不随词库同步。清除练习记录保留词库，删除正式单元移除词库及当前浏览器的该单元记录。
 
 ## 图片识别并导词入库

@@ -1,7 +1,7 @@
 import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createInitialProgress, getMasteredCount, getWeakItems, normalizeProgress, pickNextItem, recordAnswer } from "../src/engine.js";
-import { KANA_UNIT, getUnitItems, isBlankWord, normalizeLibrary, validateUnit, validateWord } from "../src/units.js";
+import { KANA_UNIT, REVIEW_PLACEHOLDER, formatAccent, getUnitItems, isBlankWord, isPracticeReady, normalizeLibrary, validateUnit, validateWord } from "../src/units.js";
 import { clearProgress, loadActiveUnit, loadProgress, loadUnits, saveActiveUnit, saveProgress, saveUnits } from "../src/store.js";
 
 const word = { id: "word-china", japanese: "中国人", kana: "ちゅうごくじん", accent: 4, meaning: "中国人" };
@@ -30,6 +30,18 @@ test("word validation keeps zero accent, trims fields and accepts full-width dig
   assert.equal(isBlankWord({ accent: 0 }), false);
   assert.equal(validateWord({ ...word, japanese: "こんにちは", kana: "こんにちは", accent: 0 }).valid, true);
   assert.equal(validateWord({ ...word, japanese: "コーヒー", kana: "コーヒー", accent: 3 }).valid, true);
+});
+
+test("unknown accent remains an explicit placeholder and missing readings stay out of practice", () => {
+  const pending = { ...word, accent: REVIEW_PLACEHOLDER };
+  assert.equal(validateWord(pending).word.accent, REVIEW_PLACEHOLDER);
+  assert.equal(formatAccent(REVIEW_PLACEHOLDER), REVIEW_PLACEHOLDER);
+  assert.equal(formatAccent(0), "0 型");
+  assert.equal(isPracticeReady(pending), true);
+  assert.equal(isPracticeReady({ ...pending, kana: REVIEW_PLACEHOLDER }), false);
+  assert.equal(isPracticeReady({ ...pending, meaning: REVIEW_PLACEHOLDER }), false);
+  assert.equal(validateWord({ ...pending, kana: REVIEW_PLACEHOLDER }).valid, true);
+  assert.equal(validateUnit({ id: "pending", name: "待校对", words: [pending] }).valid, true);
 });
 
 test("incomplete words and invalid accent or kana are rejected before saving", () => {
