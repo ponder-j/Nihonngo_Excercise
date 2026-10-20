@@ -386,6 +386,23 @@ h2 {
   line-height: 1.6;
 }
 
+.sequence-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.sequence-restart {
+  padding: 4px 0;
+  font-size: 11px;
+}
+
+.sequence-restart:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .sequence-status {
   color: var(--primary-strong);
   font-size: 12px;

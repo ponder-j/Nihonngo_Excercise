@@ -96,7 +96,10 @@
                   <span>顺序模式</span>
                 </label>
               </fieldset>
-              <span class="sequence-status" id="sequence-status" aria-live="polite" hidden></span>
+              <div class="sequence-actions" id="sequence-actions" hidden>
+                <span class="sequence-status" id="sequence-status" aria-live="polite" hidden></span>
+                <button class="text-button sequence-restart" id="sequence-restart" type="button" hidden>从头开始</button>
+              </div>
             </div>
             <p class="practice-order-help" id="practice-order-help">开启校验模式后可选择出题方式</p>
             <progress class="sequence-progress" id="sequence-progress" aria-label="顺序检验完成进度" max="1" value="0" hidden></progress>

@@ -5,6 +5,53 @@ import { KANA_UNIT_ID, LIBRARY_VERSION, normalizeLibrary } from "./units.js";
 const STORAGE_KEY = "kana-loop-progress-v1";
 const LIBRARY_KEY = "kana-loop-units-v1";
 const ACTIVE_UNIT_KEY = "kana-loop-active-unit-v1";
+const PRACTICE_SETTINGS_KEY = "kana-loop-practice-settings-v1";
+
+function sequenceKey(unitId, reviewMode) {
+  return `kana-loop-sequence-v1:${unitId}:${reviewMode ? "review" : "practice"}`;
+}
+
+export function loadSequentialProgress(unitId, reviewMode = false) {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(sequenceKey(unitId, reviewMode)));
+    if (saved?.version !== 1 || !saved.results || typeof saved.results !== "object" || Array.isArray(saved.results)) return {};
+    return Object.fromEntries(Object.entries(saved.results).filter(([id, result]) => id && ["known", "forgot"].includes(result)));
+  } catch (error) {
+    console.warn("Unable to read sequential progress", error);
+    return {};
+  }
+}
+
+export function saveSequentialProgress(unitId, results, reviewMode = false) {
+  try {
+    window.localStorage.setItem(sequenceKey(unitId, reviewMode), JSON.stringify({ version: 1, results }));
+    return true;
+  } catch (error) {
+    console.warn("Unable to save sequential progress", error);
+    return false;
+  }
+}
+
+export function loadPracticeSettings() {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(PRACTICE_SETTINGS_KEY));
+    const validationMode = saved?.validationMode === true;
+    return { validationMode, order: validationMode && saved?.order === "sequential" ? "sequential" : "random", reviewMode: saved?.reviewMode === true };
+  } catch (error) {
+    console.warn("Unable to read practice settings", error);
+    return { validationMode: false, order: "random", reviewMode: false };
+  }
+}
+
+export function savePracticeSettings(settings) {
+  try {
+    window.localStorage.setItem(PRACTICE_SETTINGS_KEY, JSON.stringify(settings));
+    return true;
+  } catch (error) {
+    console.warn("Unable to save practice settings", error);
+    return false;
+  }
+}
 
 function progressKey(unitId) {
   return unitId === KANA_UNIT_ID ? STORAGE_KEY : `kana-loop-unit-progress-v1:${unitId}`;
@@ -33,6 +80,8 @@ export function saveProgress(progress, unitId = KANA_UNIT_ID) {
 export function clearProgress(unitId = KANA_UNIT_ID) {
   try {
     window.localStorage.removeItem(progressKey(unitId));
+    window.localStorage.removeItem(sequenceKey(unitId, false));
+    window.localStorage.removeItem(sequenceKey(unitId, true));
     return true;
   } catch (error) {
     console.warn("Unable to clear local progress", error);

@@ -2,7 +2,10 @@ import test, { beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { createInitialProgress, getMasteredCount, getWeakItems, normalizeProgress, pickNextItem, recordAnswer } from "../src/engine.js";
 import { KANA_UNIT, REVIEW_PLACEHOLDER, formatAccent, getUnitItems, isBlankWord, isPracticeReady, normalizeLibrary, validateUnit, validateWord } from "../src/units.js";
-import { clearProgress, loadActiveUnit, loadProgress, loadUnits, saveActiveUnit, saveProgress, saveUnits } from "../src/store.js";
+import {
+  clearProgress, loadActiveUnit, loadPracticeSettings, loadProgress, loadSequentialProgress, loadUnits,
+  saveActiveUnit, savePracticeSettings, saveProgress, saveSequentialProgress, saveUnits,
+} from "../src/store.js";
 
 const word = { id: "word-china", japanese: "中国人", kana: "ちゅうごくじん", accent: 4, meaning: "中国人" };
 const lesson = { id: "lesson-1", name: "第一课 小李是个中国人", kind: "vocabulary", words: [word] };
@@ -131,4 +134,32 @@ test("failed storage writes are reported so the editor can retain its draft", (c
   window.localStorage.setItem = () => { throw new Error("quota exceeded"); };
   assert.equal(saveUnits([KANA_UNIT, lesson]), false);
   assert.equal(saveProgress(createInitialProgress(), lesson.id), false);
+  assert.equal(saveSequentialProgress(lesson.id, { [word.id]: "known" }), false);
+  assert.equal(savePracticeSettings({ validationMode: true, order: "sequential", reviewMode: false }), false);
+});
+
+test("sequential progress is isolated by unit and review; clearing learning data removes only that unit's passes", () => {
+  saveSequentialProgress(lesson.id, { [word.id]: "known" });
+  saveSequentialProgress(lesson.id, { [word.id]: "forgot" }, true);
+  saveSequentialProgress("lesson-2", { second: "known" });
+  assert.deepEqual(loadSequentialProgress(lesson.id), { [word.id]: "known" });
+  assert.deepEqual(loadSequentialProgress(lesson.id, true), { [word.id]: "forgot" });
+  clearProgress(lesson.id);
+  assert.deepEqual(loadSequentialProgress(lesson.id), {});
+  assert.deepEqual(loadSequentialProgress(lesson.id, true), {});
+  assert.deepEqual(loadSequentialProgress("lesson-2"), { second: "known" });
+});
+
+test("malformed sequential progress and settings fall back safely", (context) => {
+  context.mock.method(console, "warn", () => {});
+  for (const invalid of ["invalid JSON", "null", '{"version":2,"results":{}}', '{"version":1,"results":[]}']) {
+    storage.set(`kana-loop-sequence-v1:${lesson.id}:practice`, invalid);
+    assert.deepEqual(loadSequentialProgress(lesson.id), {});
+  }
+  storage.set(`kana-loop-sequence-v1:${lesson.id}:practice`, '{"version":1,"results":{"one":"known","two":"forgot","bad":"unknown"}}');
+  assert.deepEqual(loadSequentialProgress(lesson.id), { one: "known", two: "forgot" });
+  storage.set("kana-loop-practice-settings-v1", "invalid JSON");
+  assert.deepEqual(loadPracticeSettings(), { validationMode: false, order: "random", reviewMode: false });
+  savePracticeSettings({ validationMode: true, order: "sequential", reviewMode: true });
+  assert.deepEqual(loadPracticeSettings(), { validationMode: true, order: "sequential", reviewMode: true });
 });

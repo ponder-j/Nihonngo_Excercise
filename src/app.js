@@ -1,6 +1,7 @@
 import "./styles.css";
 import { getOcrApiUrl, recognizeKana } from "./ocr.js";
 import {
+  createSequentialRun,
   getDailyStats,
   getMasteredCount,
   getRecentDays,
@@ -10,7 +11,10 @@ import {
   pickPrompt,
   recordAnswer,
 } from "./engine.js";
-import { clearProgress, loadActiveUnit, loadProgress, loadUnits, saveActiveUnit, saveProgress } from "./store.js";
+import {
+  clearProgress, loadActiveUnit, loadPracticeSettings, loadProgress, loadSequentialProgress, loadUnits,
+  saveActiveUnit, savePracticeSettings, saveProgress, saveSequentialProgress,
+} from "./store.js";
 import { formatAccent, getUnitItems, isPracticeReady } from "./units.js";
 import { createUnitManager } from "./unit-manager.js";
 import { createLibraryClient } from "./library-client.js";
@@ -46,6 +50,8 @@ const elements = {
   practiceOrderHelp: document.querySelector("#practice-order-help"),
   sequenceStatus: document.querySelector("#sequence-status"),
   sequenceProgress: document.querySelector("#sequence-progress"),
+  sequenceActions: document.querySelector("#sequence-actions"),
+  sequenceRestart: document.querySelector("#sequence-restart"),
   modeLabel: document.querySelector("#mode-label"),
   scriptTag: document.querySelector("#script-tag"),
   prompt: document.querySelector("#prompt"),
@@ -99,8 +105,10 @@ let questionTimer = null;
 let sessionCount = 0;
 let transitionLocked = false;
 let milestoneShownFor = null;
-let reviewMode = false;
-let practiceOrder = "random";
+const practiceSettings = loadPracticeSettings();
+elements.validationMode.checked = practiceSettings.validationMode;
+let reviewMode = practiceSettings.reviewMode;
+let practiceOrder = practiceSettings.order;
 let sequentialRun = null;
 let pronunciationState = "idle";
 const pronunciationPlayer = createPronunciationPlayer({
@@ -141,6 +149,24 @@ function isSequentialMode() {
   return isValidationMode() && practiceOrder === "sequential";
 }
 
+function persistPracticeSettings() {
+  if (!savePracticeSettings({ validationMode: isValidationMode(), order: practiceOrder, reviewMode })) {
+    showToast("练习模式暂未保存，浏览器存储不可用");
+  }
+}
+
+function persistSequentialRun() {
+  if (!saveSequentialProgress(activeUnit.id, sequentialRun.results, reviewMode)) {
+    showToast("顺序进度暂未保存，浏览器存储不可用");
+  }
+}
+
+function restartSequentialRun() {
+  if (!isSequentialMode() || currentPage !== "practice") return;
+  cancelQuestionTransition();
+  nextQuestion({ restartSequence: true });
+}
+
 function renderPracticeOrder() {
   const enabled = isValidationMode();
   const sequential = isSequentialMode();
@@ -149,10 +175,13 @@ function renderPracticeOrder() {
     input.checked = input.value === practiceOrder;
   });
   elements.practiceOrderHelp.textContent = !enabled ? "开启校验模式后可选择出题方式"
-    : sequential ? reviewMode ? "按词表顺序，逐题回顾本轮错题" : "按词表顺序，从头到尾检验一遍"
+    : sequential ? reviewMode ? "按词表顺序回顾错题，进度自动保存" : "按词表顺序检验，进度自动保存"
     : "根据学习情况随机抽题，答错的题目会更常出现";
   elements.sequenceStatus.hidden = !sequential;
   elements.sequenceProgress.hidden = !sequential;
+  elements.sequenceActions.hidden = !sequential;
+  elements.sequenceRestart.hidden = !sequential;
+  elements.sequenceRestart.disabled = !sequentialRun?.ids.length;
   if (sequential) {
     const total = sequentialRun?.ids.length ?? 0;
     const answered = sequentialRun?.answered ?? 0;
@@ -166,6 +195,7 @@ function setPracticeOrder(order) {
   if (!isValidationMode() || currentPage !== "practice" || !["random", "sequential"].includes(order) || order === practiceOrder) return;
   cancelQuestionTransition();
   practiceOrder = order;
+  persistPracticeSettings();
   nextQuestion();
 }
 
@@ -205,6 +235,7 @@ function cancelQuestionTransition() {
 function selectUnit(unitId) {
   cancelQuestionTransition();
   reviewMode = false;
+  persistPracticeSettings();
   activeUnit = units.find((unit) => unit.id === unitId) || units[0];
   saveActiveUnit(activeUnit.id);
   progress = loadProgress(activeUnit.id, activeItems().map((item) => item.id));
@@ -246,20 +277,25 @@ async function showPage(page) {
   else nextQuestion();
 }
 
-function nextQuestion() {
+function nextQuestion({ restartSequence = false } = {}) {
   let items = activeItems();
+  const savedResults = isSequentialMode() && !sequentialRun && !restartSequence
+    ? loadSequentialProgress(activeUnit.id, reviewMode) : {};
   if (reviewMode && !(isSequentialMode() && sequentialRun)) {
     const ids = new Set(reviewItemIds());
+    Object.keys(savedResults).forEach((id) => ids.add(id));
     items = items.filter((item) => ids.has(item.id));
     if (!items.length) {
       reviewMode = false;
+      persistPracticeSettings();
       items = activeItems();
       renderReviewControl();
       showToast("本单元的错题已完成回顾");
     }
   }
   if (isSequentialMode() && !sequentialRun) {
-    sequentialRun = { ids: items.map((item) => item.id), answered: 0, known: 0, forgot: 0 };
+    sequentialRun = createSequentialRun(items.map((item) => item.id), savedResults);
+    persistSequentialRun();
   }
   const id = isSequentialMode()
     ? sequentialRun.ids[sequentialRun.answered]
@@ -419,10 +455,7 @@ function renderSequentialCompletion() {
   elements.judgementActions.hidden = true;
   elements.revealActions.hidden = false;
   elements.revealActions.classList.add("has-two-actions");
-  const restart = makeButton("再检验一遍", "button-primary", () => {
-    cancelQuestionTransition();
-    nextQuestion();
-  });
+  const restart = makeButton("再检验一遍", "button-primary", restartSequentialRun);
   restart.id = "restart-sequence-button";
   const random = makeButton("切换随机模式", "button-secondary", () => setPracticeOrder("random"));
   elements.revealActions.append(restart, random);
@@ -481,6 +514,7 @@ function renderValidationArea() {
 function toggleValidationMode() {
   sequentialRun = null;
   if (!isValidationMode()) practiceOrder = "random";
+  persistPracticeSettings();
   if (!current || transitionLocked) {
     cancelQuestionTransition();
     if (currentPage === "practice") nextQuestion();
@@ -827,8 +861,10 @@ function answer(result, { waitForNext = false, markForReview = result === "forgo
   sessionCount += 1;
   elements.sessionCount.textContent = sessionCount;
   if (isSequentialMode()) {
+    sequentialRun.results[current.item.id] = result;
     sequentialRun.answered += 1;
     sequentialRun[result] += 1;
+    persistSequentialRun();
     renderPracticeOrder();
   }
   renderStats();
@@ -864,6 +900,7 @@ function showFeedback(result, item, { reviewBefore, reviewAfter, markForReview }
 }
 
 function maybeShowMilestone(today) {
+  if (isSequentialMode()) return;
   const shouldPrompt = today.answered > 0
     && today.answered % QUESTIONS_PER_MILESTONE === 0
     && milestoneShownFor !== today.answered;
@@ -1039,10 +1076,12 @@ function bindEvents() {
   elements.forgotButton.addEventListener("click", () => answer("forgot"));
   elements.validationMode.addEventListener("change", toggleValidationMode);
   elements.practiceOrder.addEventListener("change", (event) => setPracticeOrder(event.target.value));
+  elements.sequenceRestart.addEventListener("click", restartSequentialRun);
   elements.reviewToggle.addEventListener("click", () => {
     if (!reviewMode && !reviewItemIds().length) return;
     cancelQuestionTransition();
     reviewMode = !reviewMode;
+    persistPracticeSettings();
     renderReviewControl();
     nextQuestion();
   });
@@ -1065,6 +1104,7 @@ function bindEvents() {
     if (!clearProgress(activeUnit.id)) return showToast("清除失败，请检查浏览器存储后重试");
     progress = loadProgress(activeUnit.id, activeItems().map((item) => item.id));
     reviewMode = false;
+    persistPracticeSettings();
     sessionCount = 0;
     milestoneShownFor = null;
     elements.sessionCount.textContent = "0";

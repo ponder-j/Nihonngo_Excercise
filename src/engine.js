@@ -27,6 +27,18 @@ export function createInitialProgress() {
   };
 }
 
+export function createSequentialRun(itemIds, savedResults = {}) {
+  const completed = itemIds.filter((id) => Object.hasOwn(savedResults, id) && ["known", "forgot"].includes(savedResults[id]));
+  const completedIds = new Set(completed);
+  return {
+    ids: [...completed, ...itemIds.filter((id) => !completedIds.has(id))],
+    results: Object.fromEntries(completed.map((id) => [id, savedResults[id]])),
+    answered: completed.length,
+    known: completed.filter((id) => savedResults[id] === "known").length,
+    forgot: completed.filter((id) => savedResults[id] === "forgot").length,
+  };
+}
+
 export function normalizeProgress(value, itemIds = KANA_IDS) {
   const initial = createInitialProgress();
   if (!value || typeof value !== "object" || value.version !== APP_VERSION) return initial;

@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { JSDOM } from "jsdom";
 import { build } from "vite";
+import { createInitialProgress, recordAnswer } from "../src/engine.js";
 
 const word = { id: "word-1", japanese: "中国人", kana: "ちゅうごくじん", accent: 4, meaning: "中国人" };
 const lesson = { id: "lesson-1", name: "第一课", kind: "vocabulary", words: [word] };
@@ -18,12 +19,19 @@ before(async () => {
   code = output.output.find((item) => item.type === "chunk" && item.isEntry).code;
 });
 beforeEach(async () => {
-  dom = new JSDOM(html, { url: "http://127.0.0.1:1234", runScripts: "outside-only", pretendToBeVisual: true });
-  doc = dom.window.document;
   snapshot = { library: { version: 1, units: [structuredClone(lesson)] }, revision: '"v1"', imports: [] };
   requests = [];
   audioClips = [];
   keyTime = 0;
+  await openApp();
+  doc.querySelector("#unit-select-trigger").click();
+  [...doc.querySelectorAll("[role='option']")].find((option) => option.textContent === lesson.name).click();
+});
+
+async function openApp(savedStorage = []) {
+  dom = new JSDOM(html, { url: "http://127.0.0.1:1234", runScripts: "outside-only", pretendToBeVisual: true });
+  doc = dom.window.document;
+  savedStorage.forEach(([key, value]) => dom.window.localStorage.setItem(key, value));
   dom.window.Audio = function (src) {
     const audio = doc.createElement("audio");
     if (src) audio.src = src;
@@ -47,9 +55,13 @@ beforeEach(async () => {
   };
   dom.window.eval(code);
   await settle();
-  doc.querySelector("#unit-select-trigger").click();
-  [...doc.querySelectorAll("[role='option']")].find((option) => option.textContent === lesson.name).click();
-});
+}
+
+async function reloadApp() {
+  const savedStorage = Object.entries(dom.window.localStorage);
+  dom.window.close();
+  await openApp(savedStorage);
+}
 afterEach(() => dom.window.close());
 
 function validationOn() {
@@ -85,6 +97,25 @@ async function useLibrary(units) {
 
 function chooseOrder(value) {
   doc.querySelector(`#practice-order input[value='${value}']`).click();
+}
+
+for (const order of ["sequential", "random"]) {
+  test(`${order} mode ${order === "sequential" ? "suppresses" : "retains"} the 50-answer rest prompt`, async () => {
+    let recorded = createInitialProgress();
+    for (let count = 0; count < 49; count += 1) recorded = recordAnswer(recorded, word.id, "known");
+    dom.window.localStorage.setItem("kana-loop-unit-progress-v1:lesson-1", JSON.stringify(recorded));
+    await reloadApp();
+    validationOn();
+    chooseOrder(order);
+    await submit(word.kana);
+    assert.equal(doc.querySelector("#header-today").textContent, "50 题");
+    assert.equal(doc.querySelector("#milestone-modal").hidden, order === "sequential");
+    if (order === "sequential") {
+      press("Enter");
+      assert.equal(doc.querySelector("#prompt").textContent, "本轮检验完成");
+      assert.equal(doc.querySelector("#summary-modal").hidden, true);
+    }
+  });
 }
 
 test("practice order can only be selected after validation is enabled", () => {
@@ -145,7 +176,7 @@ test("sequential validation visits each ready word once, counts skips and failur
   assert.equal(progress().totalAnswered, 3);
 });
 
-test("switching back to random preserves weighted selection and starts a new sequence from the beginning", async () => {
+test("switching back to random preserves weighted selection and returning to sequential resumes the saved position", async () => {
   await useLibrary([{ ...lesson, words: [word, secondWord, thirdWord] }]);
   dom.window.Math.random = () => 0.99;
   validationOn();
@@ -158,8 +189,49 @@ test("switching back to random preserves weighted selection and starts a new seq
   assert.equal(doc.querySelector("#answer-panel").hidden, true);
   assert.equal(progress().totalAnswered, 1);
   chooseOrder("sequential");
+  assert.equal(doc.querySelector("#prompt").textContent, secondWord.meaning);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 1 / 3");
+});
+
+test("refresh restores validation, sequential mode and the next unanswered word without counting an answer twice", async () => {
+  await useLibrary([{ ...lesson, words: [word, secondWord, thirdWord] }]);
+  validationOn();
+  chooseOrder("sequential");
+  await submit(word.kana);
+  // Refresh while the answer is still displayed, before clicking Next.
+  await reloadApp();
+  assert.equal(doc.querySelector("#validation-mode").checked, true);
+  assert.equal(doc.querySelector("#practice-order input:checked").value, "sequential");
+  assert.equal(doc.querySelector("#prompt").textContent, secondWord.meaning);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 1 / 3");
+  assert.equal(progress().totalAnswered, 1);
+  await submit("あ");
+  await reloadApp();
+  assert.equal(doc.querySelector("#prompt").textContent, secondWord.meaning);
+  assert.equal(progress().totalAnswered, 1);
+  press(" ");
+  press(" ");
+  await reloadApp();
+  assert.equal(doc.querySelector("#prompt").textContent, thirdWord.meaning);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 2 / 3");
+  assert.equal(progress().totalForgot, 1);
+});
+
+test("a completed pass survives refresh and From the beginning resets only this pass", async () => {
+  validationOn();
+  chooseOrder("sequential");
+  await submit(word.kana);
+  await reloadApp();
+  assert.equal(doc.querySelector("#prompt").textContent, "本轮检验完成");
+  assert.equal(doc.querySelector("#prompt-hint").textContent, "共 1 题，答对 1 题，未答对或跳过 0 题。");
+  const recorded = progress();
+  doc.querySelector("#sequence-restart").click();
   assert.equal(doc.querySelector("#prompt").textContent, word.meaning);
-  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 0 / 3");
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 0 / 1");
+  assert.deepEqual(progress(), recorded);
+  await reloadApp();
+  assert.equal(doc.querySelector("#prompt").textContent, word.meaning);
+  assert.deepEqual(progress(), recorded);
 });
 
 test("the completed pass ignores held Enter and can return to random without recording another answer", async () => {
@@ -178,7 +250,7 @@ test("the completed pass ignores held Enter and can return to random without rec
   assert.equal(progress().totalAnswered, 1);
 });
 
-test("changing units resets sequential progress and an empty unit stays an empty unit", async () => {
+test("each unit resumes its own progress and restarting one unit leaves the others intact", async () => {
   const nextLesson = { id: "lesson-2", name: "第二课", kind: "vocabulary", words: [thirdWord] };
   const empty = { id: "lesson-empty", name: "空单元", kind: "vocabulary", words: [] };
   await useLibrary([{ ...lesson, words: [word, secondWord] }, nextLesson, empty]);
@@ -189,11 +261,24 @@ test("changing units resets sequential progress and an empty unit stays an empty
   [...doc.querySelectorAll("[role='option']")].find((option) => option.textContent === nextLesson.name).click();
   assert.equal(doc.querySelector("#prompt").textContent, thirdWord.meaning);
   assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 0 / 1");
+  await submit(thirdWord.kana);
+  doc.querySelector("#unit-select-trigger").click();
+  [...doc.querySelectorAll("[role='option']")].find((option) => option.textContent === lesson.name).click();
+  assert.equal(doc.querySelector("#prompt").textContent, secondWord.meaning);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 1 / 2");
+  doc.querySelector("#sequence-restart").click();
+  assert.equal(doc.querySelector("#prompt").textContent, word.meaning);
+  assert.equal(progress().totalAnswered, 1);
+  doc.querySelector("#unit-select-trigger").click();
+  [...doc.querySelectorAll("[role='option']")].find((option) => option.textContent === nextLesson.name).click();
+  assert.equal(doc.querySelector("#prompt").textContent, "本轮检验完成");
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 1 / 1");
   doc.querySelector("#unit-select-trigger").click();
   [...doc.querySelectorAll("[role='option']")].find((option) => option.textContent === empty.name).click();
   assert.equal(doc.querySelector("#empty-unit-button").hidden, false);
   assert.equal(doc.querySelector("#restart-sequence-button"), null);
   assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 0 / 0");
+  assert.equal(doc.querySelector("#sequence-restart").disabled, true);
 });
 
 test("sequential review keeps a stable ordered pass when correct answers remove review items", async () => {
@@ -209,13 +294,48 @@ test("sequential review keeps a stable ordered pass when correct answers remove 
   assert.equal(doc.querySelector("#sequence-progress").max, 2);
   await submit(word.kana);
   assert.equal(progress().review[word.id], undefined);
-  press("Enter");
+  await reloadApp();
+  assert.equal(doc.querySelector("#review-toggle").getAttribute("aria-pressed"), "true");
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 1 / 2");
   assert.equal(doc.querySelector("#prompt").textContent, thirdWord.meaning);
   await submit(thirdWord.kana);
   press("Enter");
   assert.equal(doc.querySelector("#prompt").textContent, "本轮检验完成");
   assert.equal(progress().totalAnswered, 2);
   assert.deepEqual(progress().review, {});
+});
+
+test("review progress is saved separately from the unit's sequential pass", async () => {
+  await useLibrary([{ ...lesson, words: [word, secondWord, thirdWord] }]);
+  validationOn();
+  chooseOrder("sequential");
+  await submit(word.kana);
+  press("Enter");
+  doc.querySelector(".validation-abandon").click();
+  doc.querySelector("#review-toggle").click();
+  assert.equal(doc.querySelector("#prompt").textContent, secondWord.meaning);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 0 / 1");
+  await submit(secondWord.kana);
+  doc.querySelector("#review-toggle").click();
+  assert.equal(doc.querySelector("#prompt").textContent, thirdWord.meaning);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 2 / 3");
+});
+
+test("updated vocabulary keeps completed words by identity and places new words in the remaining order", async () => {
+  await useLibrary([{ ...lesson, words: [word, secondWord] }]);
+  validationOn();
+  chooseOrder("sequential");
+  await submit(word.kana);
+  snapshot.library.units[0].words = [thirdWord, word, secondWord];
+  await reloadApp();
+  assert.equal(doc.querySelector("#prompt").textContent, thirdWord.meaning);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 1 / 3");
+  await submit(thirdWord.kana);
+  snapshot.library.units[0].words = [thirdWord, secondWord];
+  await reloadApp();
+  assert.equal(doc.querySelector("#prompt").textContent, secondWord.meaning);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 1 / 2");
+  assert.equal(progress().totalAnswered, 2);
 });
 
 test("Enter checks vocabulary, then a separate Enter advances once and focuses the next input", () => {
