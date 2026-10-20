@@ -84,6 +84,7 @@ const elements = {
 };
 
 const QUESTIONS_PER_MILESTONE = 50;
+const DOUBLE_SPACE_INTERVAL_MS = 350;
 
 let units = loadUnits();
 let activeUnit = units.find((unit) => unit.id === loadActiveUnit()) || units[0];
@@ -260,7 +261,10 @@ function renderQuestion() {
   elements.prompt.classList.remove("is-empty");
   elements.answerPanel.classList.toggle("vocabulary-answer", vocabularyMode);
   elements.emptyUnitButton.hidden = Boolean(current);
-  elements.keyboardHint.hidden = !current || validationMode;
+  elements.keyboardHint.hidden = !current || (validationMode && !vocabularyMode);
+  elements.keyboardHint.innerHTML = validationMode && vocabularyMode
+    ? '快捷键：<kbd>Enter</kbd> 检查答案 / 结果后下一题 · 双击<kbd>空格</kbd> 跳过此题'
+    : '快捷键：<kbd>空格</kbd> 显示答案 · <kbd>1</kbd> 忘记 · <kbd>2</kbd> 知道';
 
   elements.answerPanel.hidden = true;
   elements.answerPanel.classList.remove("is-visible");
@@ -398,6 +402,7 @@ function renderValidationArea() {
   abandon.textContent = "这题先跳过";
   abandon.addEventListener("click", () => finishValidation("forgot", { skipped: true }));
   elements.validationArea.append(abandon);
+  if (activeUnit.kind === "vocabulary") fieldGrid.querySelector("input")?.focus();
 }
 
 function toggleValidationMode() {
@@ -678,6 +683,7 @@ function finishValidation(result, { skipped = false } = {}) {
       waitForNext: true,
       markForReview: skipped || result === "forgot" || current.validation.hadMistake,
     });
+    next.focus();
   } else answer(result, { markForReview: skipped || result === "forgot" || current.validation.hadMistake });
 }
 
@@ -996,8 +1002,18 @@ function bindEvents() {
     });
   });
 
+  let lastValidationSpacePress = null;
   document.addEventListener("keydown", (event) => {
-    if (event.isComposing || event.keyCode === 229 || event.defaultPrevented || event.repeat) return;
+    const previousSpacePress = lastValidationSpacePress;
+    lastValidationSpacePress = null;
+    if (event.isComposing || event.keyCode === 229 || event.defaultPrevented) return;
+    const vocabularyValidation = currentPage === "practice" && activeUnit.kind === "vocabulary" && isValidationMode();
+    const control = event.target.closest("input, textarea, select, button, a, summary, [contenteditable]");
+    const validationTarget = !control || elements.validationArea.contains(control);
+    if (event.repeat) {
+      if (vocabularyValidation && validationTarget && (event.key === "Enter" || event.code === "Space")) event.preventDefault();
+      return;
+    }
     if (document.querySelector("#confirm-dialog").open) return;
     if (elements.milestoneModal.hidden === false || elements.summaryModal.hidden === false || elements.dataModal.hidden === false) {
       if (event.key === "Escape") {
@@ -1010,6 +1026,25 @@ function bindEvents() {
 
     if (currentPage !== "practice") return;
     if (isValidationMode()) {
+      if (vocabularyValidation) {
+        if (!validationTarget || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+        if (event.code === "Space") {
+          event.preventDefault();
+          if (!current || transitionLocked) return;
+          if (previousSpacePress?.validation === current.validation
+            && event.timeStamp - previousSpacePress.timeStamp <= DOUBLE_SPACE_INTERVAL_MS) {
+            elements.validationArea.querySelector(".validation-abandon")?.click();
+          } else {
+            lastValidationSpacePress = { validation: current.validation, timeStamp: event.timeStamp };
+          }
+          return;
+        }
+        if (event.key === "Enter" && transitionLocked) {
+          event.preventDefault();
+          elements.validationArea.querySelector(".validation-next")?.click();
+          return;
+        }
+      }
       if (event.key === "Enter" && event.target.closest(".validation-field")) {
         event.preventDefault();
         event.target.closest(".validation-field").querySelector(".button-check")?.click();

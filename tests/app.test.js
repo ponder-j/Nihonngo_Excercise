@@ -8,7 +8,7 @@ import { build } from "vite";
 const word = { id: "word-1", japanese: "中国人", kana: "ちゅうごくじん", accent: 4, meaning: "中国人" };
 const lesson = { id: "lesson-1", name: "第一课", kind: "vocabulary", words: [word] };
 const settle = () => new Promise((resolve) => setImmediate(resolve));
-let code, html, dom, doc, snapshot, requests, audioClips;
+let code, html, dom, doc, snapshot, requests, audioClips, keyTime;
 
 before(async () => {
   html = await readFile(new URL("../index.html", import.meta.url), "utf8");
@@ -21,6 +21,7 @@ beforeEach(async () => {
   snapshot = { library: { version: 1, units: [structuredClone(lesson)] }, revision: '"v1"', imports: [] };
   requests = [];
   audioClips = [];
+  keyTime = 0;
   dom.window.Audio = function (src) {
     const audio = doc.createElement("audio");
     if (src) audio.src = src;
@@ -62,6 +63,122 @@ async function submit(value) {
 function progress() {
   return JSON.parse(dom.window.localStorage.getItem("kana-loop-unit-progress-v1:lesson-1"));
 }
+function press(key, { target = doc.activeElement, elapsed = 100, ...options } = {}) {
+  const event = new dom.window.KeyboardEvent("keydown", {
+    key, code: key === " " ? "Space" : key, bubbles: true, cancelable: true, ...options,
+  });
+  keyTime += elapsed;
+  Object.defineProperty(event, "timeStamp", { value: keyTime });
+  target.dispatchEvent(event);
+  return event;
+}
+
+test("Enter checks vocabulary, then a separate Enter advances once and focuses the next input", () => {
+  validationOn();
+  const input = doc.querySelector(".validation-field input");
+  assert.equal(doc.activeElement, input);
+  input.value = word.kana;
+  assert.equal(press("Enter").defaultPrevented, true);
+  assert.equal(progress().totalAnswered, 1);
+  assert.equal(progress().totalForgot, 0);
+  const next = doc.querySelector(".validation-next");
+  assert.equal(doc.activeElement, next);
+  assert.equal(press("Enter", { repeat: true }).defaultPrevented, true);
+  press("Enter", { isComposing: true });
+  press("Enter", { keyCode: 229 });
+  assert.equal(doc.querySelector(".validation-next"), next);
+  press("Enter");
+  const nextInput = doc.querySelector(".validation-field input");
+  assert.notEqual(nextInput, input);
+  assert.equal(doc.activeElement, nextInput);
+  assert.equal(doc.querySelector(".validation-next"), null);
+  assert.equal(progress().totalAnswered, 1);
+});
+
+test("wrong and blank Enter submissions stay on the current vocabulary question", () => {
+  validationOn();
+  const input = doc.querySelector(".validation-field input");
+  press("Enter");
+  assert.equal(doc.querySelector(".validation-attempts").textContent, "0 / 3");
+  input.value = "あ";
+  press("Enter");
+  assert.equal(doc.querySelector(".validation-attempts").textContent, "1 / 3");
+  assert.equal(doc.querySelector(".validation-next"), null);
+  assert.equal(progress(), null);
+  input.value = word.kana;
+  press("Enter");
+  press("Enter", { target: doc.body });
+  assert.notEqual(doc.querySelector(".validation-field input"), input);
+  assert.equal(progress().totalAnswered, 1);
+});
+
+test("double Space clicks the skip action once, revealing the answer and recording a review item", () => {
+  validationOn();
+  let skipClicks = 0;
+  doc.querySelector(".validation-abandon").addEventListener("click", () => { skipClicks += 1; });
+  assert.equal(press(" ").defaultPrevented, true);
+  assert.equal(progress(), null);
+  press(" ");
+  assert.equal(skipClicks, 1);
+  assert.equal(progress().totalAnswered, 1);
+  assert.equal(progress().totalForgot, 1);
+  assert.deepEqual(progress().review[word.id], { correct: 0 });
+  assert.equal(doc.querySelector("#answer-panel").hidden, false);
+  assert.ok(doc.querySelector(".validation-next"));
+  press(" ");
+  assert.equal(progress().totalAnswered, 1);
+  press("Enter");
+  press(" ", { target: doc.body });
+  assert.equal(progress().totalAnswered, 1);
+  press(" ", { target: doc.body });
+  assert.equal(progress().totalAnswered, 2);
+});
+
+test("slow, interrupted, held, modified and IME spaces do not skip", () => {
+  validationOn();
+  press(" ");
+  press(" ", { elapsed: 351 });
+  press("a");
+  press(" ");
+  assert.equal(press(" ", { repeat: true }).defaultPrevented, true);
+  press(" ");
+  press(" ", { isComposing: true });
+  press(" ");
+  press(" ", { keyCode: 229 });
+  press(" ");
+  press(" ", { ctrlKey: true });
+  assert.equal(progress(), null);
+  press(" ");
+  press(" ");
+  assert.equal(progress().totalForgot, 1);
+});
+
+test("vocabulary shortcuts leave other controls and open dialogs alone", () => {
+  validationOn();
+  const trigger = doc.querySelector("#unit-select-trigger");
+  press(" ", { target: trigger });
+  assert.equal(press(" ", { target: trigger }).defaultPrevented, false);
+  doc.querySelector("#open-data-button").click();
+  press(" ", { target: doc.body });
+  press(" ", { target: doc.body });
+  press("Enter", { target: doc.body });
+  assert.equal(progress(), null);
+});
+
+test("normal flashcards and kana validation keep their original Space behavior", () => {
+  press(" ", { target: doc.body });
+  press(" ", { target: doc.body });
+  assert.equal(doc.querySelector("#answer-panel").hidden, false);
+  assert.equal(progress(), null);
+  dom.window.HTMLCanvasElement.prototype.getContext = () => ({ fillRect() {} });
+  doc.querySelector("#unit-select-trigger").click();
+  [...doc.querySelectorAll("[role='option']")].find((option) => option.textContent === "假名练习单元").click();
+  validationOn();
+  assert.equal(doc.querySelectorAll(".validation-field").length, 2);
+  assert.equal(press(" ", { target: doc.body }).defaultPrevented, false);
+  press(" ", { target: doc.body });
+  assert.equal(dom.window.localStorage.getItem("kana-loop-progress-v1"), null);
+});
 
 test("pronunciation is requested only on click after reveal and uses the stored Japanese reading", async () => {
   const button = doc.querySelector("#pronunciation-button");
