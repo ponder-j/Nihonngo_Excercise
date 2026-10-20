@@ -84,6 +84,24 @@
             </div>
           </div>
 
+          <div class="practice-order-panel">
+            <div class="practice-order-row">
+              <fieldset class="practice-order" id="practice-order" aria-label="出题模式" aria-describedby="practice-order-help" disabled>
+                <label class="order-option">
+                  <input type="radio" name="practice-order" value="random" checked />
+                  <span>随机模式</span>
+                </label>
+                <label class="order-option">
+                  <input type="radio" name="practice-order" value="sequential" />
+                  <span>顺序模式</span>
+                </label>
+              </fieldset>
+              <span class="sequence-status" id="sequence-status" aria-live="polite" hidden></span>
+            </div>
+            <p class="practice-order-help" id="practice-order-help">开启校验模式后可选择出题方式</p>
+            <progress class="sequence-progress" id="sequence-progress" aria-label="顺序检验完成进度" max="1" value="0" hidden></progress>
+          </div>
+
           <div class="question-stage" id="question-stage">
             <span class="script-tag" id="script-tag">平假名</span>
             <div class="prompt" id="prompt" lang="ja">あ</div>

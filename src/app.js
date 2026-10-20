@@ -42,6 +42,10 @@ const elements = {
   validationSwitch: document.querySelector("#validation-switch"),
   practiceCard: document.querySelector("#practice-card"),
   validationMode: document.querySelector("#validation-mode"),
+  practiceOrder: document.querySelector("#practice-order"),
+  practiceOrderHelp: document.querySelector("#practice-order-help"),
+  sequenceStatus: document.querySelector("#sequence-status"),
+  sequenceProgress: document.querySelector("#sequence-progress"),
   modeLabel: document.querySelector("#mode-label"),
   scriptTag: document.querySelector("#script-tag"),
   prompt: document.querySelector("#prompt"),
@@ -96,6 +100,8 @@ let sessionCount = 0;
 let transitionLocked = false;
 let milestoneShownFor = null;
 let reviewMode = false;
+let practiceOrder = "random";
+let sequentialRun = null;
 let pronunciationState = "idle";
 const pronunciationPlayer = createPronunciationPlayer({
   onStateChange: renderPronunciationState,
@@ -131,6 +137,38 @@ function isValidationMode() {
   return elements.validationMode.checked;
 }
 
+function isSequentialMode() {
+  return isValidationMode() && practiceOrder === "sequential";
+}
+
+function renderPracticeOrder() {
+  const enabled = isValidationMode();
+  const sequential = isSequentialMode();
+  elements.practiceOrder.disabled = !enabled;
+  elements.practiceOrder.querySelectorAll("input").forEach((input) => {
+    input.checked = input.value === practiceOrder;
+  });
+  elements.practiceOrderHelp.textContent = !enabled ? "开启校验模式后可选择出题方式"
+    : sequential ? reviewMode ? "按词表顺序，逐题回顾本轮错题" : "按词表顺序，从头到尾检验一遍"
+    : "根据学习情况随机抽题，答错的题目会更常出现";
+  elements.sequenceStatus.hidden = !sequential;
+  elements.sequenceProgress.hidden = !sequential;
+  if (sequential) {
+    const total = sequentialRun?.ids.length ?? 0;
+    const answered = sequentialRun?.answered ?? 0;
+    elements.sequenceStatus.textContent = `已完成 ${answered} / ${total}`;
+    elements.sequenceProgress.max = total || 1;
+    elements.sequenceProgress.value = answered;
+  }
+}
+
+function setPracticeOrder(order) {
+  if (!isValidationMode() || currentPage !== "practice" || !["random", "sequential"].includes(order) || order === practiceOrder) return;
+  cancelQuestionTransition();
+  practiceOrder = order;
+  nextQuestion();
+}
+
 function renderUnitPicker() {
   unitSelect.render(units, activeUnit.id);
   const total = getUnitItems(activeUnit).length;
@@ -160,6 +198,7 @@ function cancelQuestionTransition() {
   window.clearTimeout(questionTimer);
   transitionLocked = false;
   current = null;
+  sequentialRun = null;
   elements.feedbackFlash.className = "feedback-flash";
 }
 
@@ -209,7 +248,7 @@ async function showPage(page) {
 
 function nextQuestion() {
   let items = activeItems();
-  if (reviewMode) {
+  if (reviewMode && !(isSequentialMode() && sequentialRun)) {
     const ids = new Set(reviewItemIds());
     items = items.filter((item) => ids.has(item.id));
     if (!items.length) {
@@ -219,7 +258,12 @@ function nextQuestion() {
       showToast("本单元的错题已完成回顾");
     }
   }
-  const id = pickNextItem(progress, Math.random, items.map((item) => item.id));
+  if (isSequentialMode() && !sequentialRun) {
+    sequentialRun = { ids: items.map((item) => item.id), answered: 0, known: 0, forgot: 0 };
+  }
+  const id = isSequentialMode()
+    ? sequentialRun.ids[sequentialRun.answered]
+    : pickNextItem(progress, Math.random, items.map((item) => item.id));
   const item = items.find((entry) => entry.id === id);
   if (!item) {
     current = null;
@@ -256,6 +300,7 @@ function renderQuestion() {
   elements.pronunciationButton.disabled = true;
   const validationMode = isValidationMode();
   const vocabularyMode = activeUnit.kind === "vocabulary";
+  renderPracticeOrder();
   elements.questionLabel.textContent = activeUnit.name;
   elements.prompt.classList.toggle("is-vocabulary", vocabularyMode);
   elements.prompt.classList.remove("is-empty");
@@ -278,6 +323,10 @@ function renderQuestion() {
   elements.revealActions.classList.remove("has-two-actions");
 
   if (!current) {
+    if (isSequentialMode() && sequentialRun.ids.length > 0 && sequentialRun.answered === sequentialRun.ids.length) {
+      renderSequentialCompletion();
+      return;
+    }
     setModeLabel("先添加词库，再开始练习");
     elements.scriptTag.textContent = "空词库";
     elements.scriptTag.lang = "zh-CN";
@@ -356,6 +405,30 @@ function renderQuestion() {
   if (validationMode) renderValidationArea();
 }
 
+function renderSequentialCompletion() {
+  setModeLabel("顺序模式 · 本轮已完成");
+  elements.emptyUnitButton.hidden = true;
+  elements.scriptTag.textContent = "已完成";
+  elements.scriptTag.lang = "zh-CN";
+  elements.prompt.textContent = "本轮检验完成";
+  elements.prompt.lang = "zh-CN";
+  elements.prompt.classList.remove("is-romaji");
+  elements.prompt.classList.add("is-empty");
+  elements.promptHint.textContent = `共 ${sequentialRun.answered} 题，答对 ${sequentialRun.known} 题，未答对或跳过 ${sequentialRun.forgot} 题。`;
+  elements.validationArea.hidden = true;
+  elements.judgementActions.hidden = true;
+  elements.revealActions.hidden = false;
+  elements.revealActions.classList.add("has-two-actions");
+  const restart = makeButton("再检验一遍", "button-primary", () => {
+    cancelQuestionTransition();
+    nextQuestion();
+  });
+  restart.id = "restart-sequence-button";
+  const random = makeButton("切换随机模式", "button-secondary", () => setPracticeOrder("random"));
+  elements.revealActions.append(restart, random);
+  restart.focus();
+}
+
 function setModeLabel(text) {
   elements.modeLabel.textContent = reviewMode ? `错题回顾 · ${text}` : text;
 }
@@ -406,8 +479,9 @@ function renderValidationArea() {
 }
 
 function toggleValidationMode() {
-  if (!current) return;
-  if (transitionLocked) {
+  sequentialRun = null;
+  if (!isValidationMode()) practiceOrder = "random";
+  if (!current || transitionLocked) {
     cancelQuestionTransition();
     if (currentPage === "practice") nextQuestion();
     return;
@@ -673,7 +747,8 @@ function finishValidation(result, { skipped = false } = {}) {
     Object.values(current.validation.fields).forEach((field) => lockValidationField(field));
     revealAnswer();
     elements.validationArea.querySelector(".validation-abandon").hidden = true;
-    const next = makeButton("下一题", "button-primary validation-next", () => {
+    const lastQuestion = isSequentialMode() && sequentialRun.answered === sequentialRun.ids.length - 1;
+    const next = makeButton(lastQuestion ? "查看本轮结果" : "下一题", "button-primary validation-next", () => {
       elements.validationArea.replaceChildren();
       transitionLocked = false;
       nextQuestion();
@@ -751,6 +826,11 @@ function answer(result, { waitForNext = false, markForReview = result === "forgo
   if (!saveProgress(progress, activeUnit.id)) showToast("练习记录暂未保存，浏览器存储不可用");
   sessionCount += 1;
   elements.sessionCount.textContent = sessionCount;
+  if (isSequentialMode()) {
+    sequentialRun.answered += 1;
+    sequentialRun[result] += 1;
+    renderPracticeOrder();
+  }
   renderStats();
   showFeedback(result, current.item, { reviewBefore, reviewAfter, markForReview });
 
@@ -958,6 +1038,7 @@ function bindEvents() {
   elements.knownButton.addEventListener("click", () => answer("known"));
   elements.forgotButton.addEventListener("click", () => answer("forgot"));
   elements.validationMode.addEventListener("change", toggleValidationMode);
+  elements.practiceOrder.addEventListener("change", (event) => setPracticeOrder(event.target.value));
   elements.reviewToggle.addEventListener("click", () => {
     if (!reviewMode && !reviewItemIds().length) return;
     cancelQuestionTransition();
@@ -1010,8 +1091,9 @@ function bindEvents() {
     const vocabularyValidation = currentPage === "practice" && activeUnit.kind === "vocabulary" && isValidationMode();
     const control = event.target.closest("input, textarea, select, button, a, summary, [contenteditable]");
     const validationTarget = !control || elements.validationArea.contains(control);
+    const sequenceResultTarget = isSequentialMode() && !current && control && elements.revealActions.contains(control);
     if (event.repeat) {
-      if (vocabularyValidation && validationTarget && (event.key === "Enter" || event.code === "Space")) event.preventDefault();
+      if (vocabularyValidation && (validationTarget || sequenceResultTarget) && (event.key === "Enter" || event.code === "Space")) event.preventDefault();
       return;
     }
     if (document.querySelector("#confirm-dialog").open) return;
