@@ -142,11 +142,16 @@ test("sequential progress is isolated by unit and review; clearing learning data
   saveSequentialProgress(lesson.id, { [word.id]: "known" });
   saveSequentialProgress(lesson.id, { [word.id]: "forgot" }, true);
   saveSequentialProgress("lesson-2", { second: "known" });
+  saveSequentialProgress(lesson.id, { [word.id]: "forgot" }, false, "dictation");
+  saveSequentialProgress(lesson.id, { [word.id]: "known" }, true, "dictation");
+  assert.deepEqual(loadSequentialProgress(lesson.id, false, "dictation"), { [word.id]: "forgot" });
   assert.deepEqual(loadSequentialProgress(lesson.id), { [word.id]: "known" });
   assert.deepEqual(loadSequentialProgress(lesson.id, true), { [word.id]: "forgot" });
   clearProgress(lesson.id);
   assert.deepEqual(loadSequentialProgress(lesson.id), {});
   assert.deepEqual(loadSequentialProgress(lesson.id, true), {});
+  assert.deepEqual(loadSequentialProgress(lesson.id, false, "dictation"), {});
+  assert.deepEqual(loadSequentialProgress(lesson.id, true, "dictation"), {});
   assert.deepEqual(loadSequentialProgress("lesson-2"), { second: "known" });
 });
 
@@ -162,4 +167,6 @@ test("malformed sequential progress and settings fall back safely", (context) =>
   assert.deepEqual(loadPracticeSettings(), { validationMode: false, order: "random", reviewMode: false });
   savePracticeSettings({ validationMode: true, order: "sequential", reviewMode: true });
   assert.deepEqual(loadPracticeSettings(), { validationMode: true, order: "sequential", reviewMode: true });
+  savePracticeSettings({ validationMode: true, order: "dictation", reviewMode: false });
+  assert.deepEqual(loadPracticeSettings(), { validationMode: true, order: "dictation", reviewMode: false });
 });

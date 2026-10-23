@@ -483,6 +483,41 @@ h2 {
   font-size: 13px;
 }
 
+.dictation-button {
+  display: grid;
+  width: 96px;
+  height: 96px;
+  margin: 24px 0;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgba(66, 107, 155, 0.25);
+  border-radius: 50%;
+  color: var(--primary-strong);
+  background: var(--indigo-soft);
+  cursor: pointer;
+}
+
+.dictation-button svg {
+  width: 38px;
+  height: 38px;
+}
+
+.dictation-button:hover,
+.dictation-button[data-state="playing"] {
+  background: var(--paper-deep);
+  border-color: var(--primary);
+}
+
+.dictation-button[data-state="loading"] {
+  opacity: 0.65;
+}
+
+.dictation-status {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .answer-panel {
   width: min(520px, 100%);
   margin-top: 24px;

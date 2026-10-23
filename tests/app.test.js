@@ -11,7 +11,7 @@ const lesson = { id: "lesson-1", name: "第一课", kind: "vocabulary", words: [
 const secondWord = { id: "word-2", japanese: "学生", kana: "がくせい", accent: 0, meaning: "学生" };
 const thirdWord = { id: "word-3", japanese: "先生", kana: "せんせい", accent: 3, meaning: "老师" };
 const settle = () => new Promise((resolve) => setImmediate(resolve));
-let code, html, dom, doc, snapshot, requests, audioClips, keyTime;
+let code, html, dom, doc, snapshot, requests, audioClips, keyTime, audioOutcome;
 
 before(async () => {
   html = await readFile(new URL("../index.html", import.meta.url), "utf8");
@@ -23,6 +23,7 @@ beforeEach(async () => {
   requests = [];
   audioClips = [];
   keyTime = 0;
+  audioOutcome = "success";
   await openApp();
   doc.querySelector("#unit-select-trigger").click();
   [...doc.querySelectorAll("[role='option']")].find((option) => option.textContent === lesson.name).click();
@@ -36,7 +37,11 @@ async function openApp(savedStorage = []) {
     const audio = doc.createElement("audio");
     if (src) audio.src = src;
     audio.pauseCalls = 0;
-    audio.play = async () => audio.dispatchEvent(new dom.window.Event("playing"));
+    audio.play = async () => {
+      if (audioOutcome === "blocked") throw Object.assign(new Error("gesture required"), { name: "NotAllowedError" });
+      if (audioOutcome === "unavailable") throw new Error("audio unavailable");
+      audio.dispatchEvent(new dom.window.Event("playing"));
+    };
     audio.pause = () => { audio.pauseCalls += 1; };
     audio.load = () => {};
     audioClips.push(audio);
@@ -99,8 +104,8 @@ function chooseOrder(value) {
   doc.querySelector(`#practice-order input[value='${value}']`).click();
 }
 
-for (const order of ["sequential", "random"]) {
-  test(`${order} mode ${order === "sequential" ? "suppresses" : "retains"} the 50-answer rest prompt`, async () => {
+for (const order of ["sequential", "random", "dictation"]) {
+  test(`${order} mode ${order !== "random" ? "suppresses" : "retains"} the 50-answer rest prompt`, async () => {
     let recorded = createInitialProgress();
     for (let count = 0; count < 49; count += 1) recorded = recordAnswer(recorded, word.id, "known");
     dom.window.localStorage.setItem("kana-loop-unit-progress-v1:lesson-1", JSON.stringify(recorded));
@@ -109,14 +114,148 @@ for (const order of ["sequential", "random"]) {
     chooseOrder(order);
     await submit(word.kana);
     assert.equal(doc.querySelector("#header-today").textContent, "50 题");
-    assert.equal(doc.querySelector("#milestone-modal").hidden, order === "sequential");
-    if (order === "sequential") {
+    assert.equal(doc.querySelector("#milestone-modal").hidden, order !== "random");
+    if (order !== "random") {
       press("Enter");
-      assert.equal(doc.querySelector("#prompt").textContent, "本轮检验完成");
+      assert.equal(doc.querySelector("#prompt").textContent, order === "dictation" ? "本轮听写完成" : "本轮检验完成");
       assert.equal(doc.querySelector("#summary-modal").hidden, true);
     }
   });
 }
+
+test("dictation starts at the first word, hides the clue, plays once, and replays on click", async () => {
+  await useLibrary([{ ...lesson, words: [word, secondWord] }]);
+  dom.window.Math.random = () => 0.99;
+  validationOn();
+  chooseOrder("dictation");
+  await settle();
+  assert.equal(audioClips.length, 1);
+  assert.equal(new URL(audioClips[0].src).searchParams.get("audio"), word.kana);
+  assert.equal(doc.querySelector("#prompt").textContent, "");
+  assert.equal(doc.querySelector("#prompt").hidden, true);
+  assert.equal(doc.querySelector("#script-tag").hidden, true);
+  assert.equal(doc.querySelector("#answer-panel").hidden, true);
+  assert.equal(doc.querySelector("#dictation-button").hidden, false);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 0 / 2");
+  await submit("あ");
+  assert.equal(audioClips.length, 1);
+  assert.equal(doc.querySelector(".validation-attempts").textContent, "1 / 3");
+  doc.querySelector("#dictation-button").click();
+  await settle();
+  assert.equal(audioClips.length, 2);
+  assert.ok(audioClips[0].pauseCalls > 0);
+  audioClips[1].dispatchEvent(new dom.window.Event("ended"));
+  assert.equal(audioClips.length, 2);
+  await submit(word.kana);
+  assert.equal(doc.querySelector("#answer-panel").hidden, false);
+  press("Enter");
+  await settle();
+  assert.equal(audioClips.length, 3);
+  assert.equal(new URL(audioClips[2].src).searchParams.get("audio"), secondWord.kana);
+  assert.equal(doc.querySelector("#prompt").textContent, "");
+  doc.querySelector("#dictation-button").focus();
+  press(" ");
+  press(" ");
+  press("Enter");
+  assert.equal(doc.querySelector("#prompt").textContent, "本轮听写完成");
+  assert.equal(progress().totalAnswered, 2);
+});
+
+test("missing dictation audio reveals the word with a note and leaves the answer workflow intact", async () => {
+  audioOutcome = "unavailable";
+  validationOn();
+  chooseOrder("dictation");
+  await settle();
+  assert.equal(doc.querySelector("#prompt").textContent, word.japanese);
+  assert.equal(doc.querySelector("#prompt").hidden, false);
+  assert.equal(doc.querySelector("#dictation-status").textContent, "无听力资源");
+  assert.equal(doc.querySelector("#dictation-status").hidden, false);
+  assert.equal(doc.querySelector(".validation-attempts").textContent, "0 / 3");
+  assert.equal(progress(), null);
+  audioOutcome = "success";
+  doc.querySelector("#dictation-button").click();
+  await settle();
+  assert.equal(doc.querySelector("#dictation-status").hidden, true);
+  assert.equal(doc.querySelector("#prompt").hidden, true);
+  await submit(word.kana);
+  assert.equal(progress().totalAnswered, 1);
+});
+
+test("blocked autoplay keeps the word hidden and clicking the speaker can start playback", async () => {
+  audioOutcome = "blocked";
+  validationOn();
+  chooseOrder("dictation");
+  await settle();
+  assert.equal(doc.querySelector("#prompt").hidden, true);
+  assert.equal(doc.querySelector("#prompt").textContent, "");
+  assert.equal(doc.querySelector("#dictation-status").textContent, "点击喇叭开始播放");
+  audioOutcome = "success";
+  doc.querySelector("#dictation-button").click();
+  await settle();
+  assert.equal(doc.querySelector("#dictation-button").dataset.state, "playing");
+  assert.equal(doc.querySelector("#dictation-status").hidden, true);
+  assert.equal(doc.querySelector("#prompt").hidden, true);
+});
+
+test("dictation progress resumes separately from the regular sequence and From the beginning resets only dictation", async () => {
+  await useLibrary([{ ...lesson, words: [word, secondWord] }]);
+  validationOn();
+  chooseOrder("sequential");
+  await submit(word.kana);
+  chooseOrder("dictation");
+  await settle();
+  assert.equal(new URL(audioClips.at(-1).src).searchParams.get("audio"), word.kana);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 0 / 2");
+  await submit(word.kana);
+  await reloadApp();
+  assert.equal(doc.querySelector("#practice-order input:checked").value, "dictation");
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 1 / 2");
+  assert.equal(new URL(audioClips.at(-1).src).searchParams.get("audio"), secondWord.kana);
+  doc.querySelector("#sequence-restart").click();
+  chooseOrder("sequential");
+  assert.equal(doc.querySelector("#prompt").textContent, secondWord.meaning);
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 1 / 2");
+  assert.equal(progress().totalAnswered, 2);
+  chooseOrder("dictation");
+  assert.equal(doc.querySelector("#sequence-status").textContent, "已完成 0 / 2");
+  assert.equal(new URL(audioClips.at(-1).src).searchParams.get("audio"), word.kana);
+});
+
+test("stale audio errors cannot reveal the next dictation word or affect another mode", async () => {
+  await useLibrary([{ ...lesson, words: [word, secondWord] }]);
+  validationOn();
+  chooseOrder("dictation");
+  await settle();
+  const oldError = audioClips[0].onerror;
+  doc.querySelector(".validation-abandon").click();
+  press("Enter");
+  oldError();
+  assert.equal(doc.querySelector("#prompt").hidden, true);
+  assert.equal(doc.querySelector("#dictation-status").hidden, true);
+  const nextError = audioClips[1].onerror;
+  chooseOrder("random");
+  nextError();
+  assert.equal(doc.querySelector("#dictation-button").hidden, true);
+  assert.equal(doc.querySelector("#dictation-status").hidden, true);
+  assert.equal(doc.querySelector("#prompt").hidden, false);
+  assert.ok(audioClips[1].pauseCalls > 0);
+});
+
+test("dictation is available only after validation is enabled and switching to kana cancels its audio", async () => {
+  chooseOrder("dictation");
+  assert.equal(doc.querySelector("#practice-order input:checked").value, "random");
+  assert.equal(audioClips.length, 0);
+  validationOn();
+  chooseOrder("dictation");
+  await settle();
+  dom.window.HTMLCanvasElement.prototype.getContext = () => ({ fillRect() {} });
+  doc.querySelector("#unit-select-trigger").click();
+  [...doc.querySelectorAll("[role='option']")].find((option) => option.textContent === "假名练习单元").click();
+  assert.equal(doc.querySelector("#dictation-option").hidden, true);
+  assert.equal(doc.querySelector("#dictation-button").hidden, true);
+  assert.equal(doc.querySelector("#practice-order input:checked").value, "sequential");
+  assert.ok(audioClips[0].pauseCalls > 0);
+});
 
 test("practice order can only be selected after validation is enabled", () => {
   const group = doc.querySelector("#practice-order");

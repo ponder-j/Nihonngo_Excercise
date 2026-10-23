@@ -7,13 +7,13 @@ const LIBRARY_KEY = "kana-loop-units-v1";
 const ACTIVE_UNIT_KEY = "kana-loop-active-unit-v1";
 const PRACTICE_SETTINGS_KEY = "kana-loop-practice-settings-v1";
 
-function sequenceKey(unitId, reviewMode) {
-  return `kana-loop-sequence-v1:${unitId}:${reviewMode ? "review" : "practice"}`;
+function sequenceKey(unitId, reviewMode, mode = "sequential") {
+  return `kana-loop-${mode === "dictation" ? "dictation" : "sequence"}-v1:${unitId}:${reviewMode ? "review" : "practice"}`;
 }
 
-export function loadSequentialProgress(unitId, reviewMode = false) {
+export function loadSequentialProgress(unitId, reviewMode = false, mode = "sequential") {
   try {
-    const saved = JSON.parse(window.localStorage.getItem(sequenceKey(unitId, reviewMode)));
+    const saved = JSON.parse(window.localStorage.getItem(sequenceKey(unitId, reviewMode, mode)));
     if (saved?.version !== 1 || !saved.results || typeof saved.results !== "object" || Array.isArray(saved.results)) return {};
     return Object.fromEntries(Object.entries(saved.results).filter(([id, result]) => id && ["known", "forgot"].includes(result)));
   } catch (error) {
@@ -22,9 +22,9 @@ export function loadSequentialProgress(unitId, reviewMode = false) {
   }
 }
 
-export function saveSequentialProgress(unitId, results, reviewMode = false) {
+export function saveSequentialProgress(unitId, results, reviewMode = false, mode = "sequential") {
   try {
-    window.localStorage.setItem(sequenceKey(unitId, reviewMode), JSON.stringify({ version: 1, results }));
+    window.localStorage.setItem(sequenceKey(unitId, reviewMode, mode), JSON.stringify({ version: 1, results }));
     return true;
   } catch (error) {
     console.warn("Unable to save sequential progress", error);
@@ -36,7 +36,7 @@ export function loadPracticeSettings() {
   try {
     const saved = JSON.parse(window.localStorage.getItem(PRACTICE_SETTINGS_KEY));
     const validationMode = saved?.validationMode === true;
-    return { validationMode, order: validationMode && saved?.order === "sequential" ? "sequential" : "random", reviewMode: saved?.reviewMode === true };
+    return { validationMode, order: validationMode && ["sequential", "dictation"].includes(saved?.order) ? saved.order : "random", reviewMode: saved?.reviewMode === true };
   } catch (error) {
     console.warn("Unable to read practice settings", error);
     return { validationMode: false, order: "random", reviewMode: false };
@@ -80,8 +80,10 @@ export function saveProgress(progress, unitId = KANA_UNIT_ID) {
 export function clearProgress(unitId = KANA_UNIT_ID) {
   try {
     window.localStorage.removeItem(progressKey(unitId));
-    window.localStorage.removeItem(sequenceKey(unitId, false));
-    window.localStorage.removeItem(sequenceKey(unitId, true));
+    for (const mode of ["sequential", "dictation"]) {
+      window.localStorage.removeItem(sequenceKey(unitId, false, mode));
+      window.localStorage.removeItem(sequenceKey(unitId, true, mode));
+    }
     return true;
   } catch (error) {
     console.warn("Unable to clear local progress", error);

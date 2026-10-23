@@ -63,7 +63,14 @@ export function createPronunciationPlayer({
   function fail(run) {
     if (active !== run) return;
     stop();
-    onError(FAILURE_MESSAGE);
+    run.onError(FAILURE_MESSAGE);
+  }
+
+  function playbackBlocked(run) {
+    if (active !== run || !run.onBlocked) return false;
+    stop();
+    run.onBlocked();
+    return true;
   }
 
   function armTimer(run, callback, duration = timeoutMs) {
@@ -102,14 +109,20 @@ export function createPronunciationPlayer({
       utterance.voice = voice;
       utterance.onstart = () => playbackStarted(run);
       utterance.onend = () => { if (active === run) stop(); };
-      utterance.onerror = () => fail(run);
+      utterance.onerror = (event) => {
+        if (event?.error === "not-allowed" && playbackBlocked(run)) return;
+        fail(run);
+      };
       armTimer(run, () => fail(run));
       synthesis.speak(utterance);
       return true;
     }
 
     function checkVoices() {
-      try { return tryVoice(); } catch { fail(run); return true; }
+      try { return tryVoice(); } catch (error) {
+        if (error?.name !== "NotAllowedError" || !playbackBlocked(run)) fail(run);
+        return true;
+      }
     }
 
     if (checkVoices()) return;
@@ -118,14 +131,14 @@ export function createPronunciationPlayer({
     armTimer(run, () => { if (!checkVoices()) fail(run); }, voicesTimeoutMs);
   }
 
-  function play(text) {
+  function play(text, { onError: handleError = onError, onBlocked = null } = {}) {
     stop();
     const normalized = typeof text === "string" ? text.trim() : "";
     if (!normalized) {
-      onError("暂无可播放的日语文本。");
+      handleError("暂无可播放的日语文本。");
       return;
     }
-    const run = { text: normalized, phase: "audio", timer: null, audio: null, utterance: null };
+    const run = { text: normalized, phase: "audio", timer: null, audio: null, utterance: null, onError: handleError, onBlocked };
     active = run;
     setState("loading");
     try {
@@ -141,8 +154,12 @@ export function createPronunciationPlayer({
       // No crossOrigin is set, and audio is only requested following play().
       Promise.resolve(audio.play()).then(() => {
         if (active === run && run.phase === "audio") playbackStarted(run);
-      }, () => useNativeVoice(run));
-    } catch {
+      }, (error) => {
+        if (error?.name === "NotAllowedError" && playbackBlocked(run)) return;
+        useNativeVoice(run);
+      });
+    } catch (error) {
+      if (error?.name === "NotAllowedError" && playbackBlocked(run)) return;
       useNativeVoice(run);
     }
   }

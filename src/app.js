@@ -52,6 +52,9 @@ const elements = {
   sequenceProgress: document.querySelector("#sequence-progress"),
   sequenceActions: document.querySelector("#sequence-actions"),
   sequenceRestart: document.querySelector("#sequence-restart"),
+  dictationOption: document.querySelector("#dictation-option"),
+  dictationButton: document.querySelector("#dictation-button"),
+  dictationStatus: document.querySelector("#dictation-status"),
   modeLabel: document.querySelector("#mode-label"),
   scriptTag: document.querySelector("#script-tag"),
   prompt: document.querySelector("#prompt"),
@@ -146,7 +149,18 @@ function isValidationMode() {
 }
 
 function isSequentialMode() {
-  return isValidationMode() && practiceOrder === "sequential";
+  return isValidationMode() && ["sequential", "dictation"].includes(practiceOrder);
+}
+
+function isDictationMode() {
+  return isValidationMode() && activeUnit.kind === "vocabulary" && practiceOrder === "dictation";
+}
+
+function normalizePracticeOrderForUnit() {
+  if (activeUnit.kind !== "vocabulary" && practiceOrder === "dictation") {
+    practiceOrder = "sequential";
+    persistPracticeSettings();
+  }
 }
 
 function persistPracticeSettings() {
@@ -156,7 +170,7 @@ function persistPracticeSettings() {
 }
 
 function persistSequentialRun() {
-  if (!saveSequentialProgress(activeUnit.id, sequentialRun.results, reviewMode)) {
+  if (!saveSequentialProgress(activeUnit.id, sequentialRun.results, reviewMode, practiceOrder)) {
     showToast("顺序进度暂未保存，浏览器存储不可用");
   }
 }
@@ -171,10 +185,12 @@ function renderPracticeOrder() {
   const enabled = isValidationMode();
   const sequential = isSequentialMode();
   elements.practiceOrder.disabled = !enabled;
+  elements.dictationOption.hidden = activeUnit.kind !== "vocabulary";
   elements.practiceOrder.querySelectorAll("input").forEach((input) => {
     input.checked = input.value === practiceOrder;
   });
   elements.practiceOrderHelp.textContent = !enabled ? "开启校验模式后可选择出题方式"
+    : isDictationMode() ? "按词表顺序听写，进度单独保存"
     : sequential ? reviewMode ? "按词表顺序回顾错题，进度自动保存" : "按词表顺序检验，进度自动保存"
     : "根据学习情况随机抽题，答错的题目会更常出现";
   elements.sequenceStatus.hidden = !sequential;
@@ -192,7 +208,8 @@ function renderPracticeOrder() {
 }
 
 function setPracticeOrder(order) {
-  if (!isValidationMode() || currentPage !== "practice" || !["random", "sequential"].includes(order) || order === practiceOrder) return;
+  if (!isValidationMode() || currentPage !== "practice" || !["random", "sequential", "dictation"].includes(order) || order === practiceOrder) return;
+  if (order === "dictation" && activeUnit.kind !== "vocabulary") return;
   cancelQuestionTransition();
   practiceOrder = order;
   persistPracticeSettings();
@@ -235,8 +252,9 @@ function cancelQuestionTransition() {
 function selectUnit(unitId) {
   cancelQuestionTransition();
   reviewMode = false;
-  persistPracticeSettings();
   activeUnit = units.find((unit) => unit.id === unitId) || units[0];
+  normalizePracticeOrderForUnit();
+  persistPracticeSettings();
   saveActiveUnit(activeUnit.id);
   progress = loadProgress(activeUnit.id, activeItems().map((item) => item.id));
   sessionCount = 0;
@@ -280,7 +298,7 @@ async function showPage(page) {
 function nextQuestion({ restartSequence = false } = {}) {
   let items = activeItems();
   const savedResults = isSequentialMode() && !sequentialRun && !restartSequence
-    ? loadSequentialProgress(activeUnit.id, reviewMode) : {};
+    ? loadSequentialProgress(activeUnit.id, reviewMode, practiceOrder) : {};
   if (reviewMode && !(isSequentialMode() && sequentialRun)) {
     const ids = new Set(reviewItemIds());
     Object.keys(savedResults).forEach((id) => ids.add(id));
@@ -336,6 +354,14 @@ function renderQuestion() {
   elements.pronunciationButton.disabled = true;
   const validationMode = isValidationMode();
   const vocabularyMode = activeUnit.kind === "vocabulary";
+  const dictationMode = isDictationMode();
+  elements.dictationButton.hidden = !dictationMode || !current;
+  elements.dictationButton.dataset.state = "idle";
+  elements.dictationStatus.hidden = true;
+  elements.dictationStatus.textContent = "";
+  elements.prompt.hidden = false;
+  elements.scriptTag.hidden = false;
+  elements.pronunciationButton.hidden = dictationMode;
   renderPracticeOrder();
   elements.questionLabel.textContent = activeUnit.name;
   elements.prompt.classList.toggle("is-vocabulary", vocabularyMode);
@@ -382,13 +408,15 @@ function renderQuestion() {
   elements.revealActions.classList.toggle("has-two-actions", direction === "romajiToKana");
 
   if (vocabularyMode) {
-    setModeLabel(validationMode ? "看中文，输入单词假名" : "看中文释义，回忆日文单词");
+    setModeLabel(dictationMode ? "听发音，输入单词假名" : validationMode ? "看中文，输入单词假名" : "看中文释义，回忆日文单词");
     elements.scriptTag.textContent = "中文释义";
     elements.scriptTag.lang = "zh-CN";
-    elements.prompt.textContent = item.meaning;
+    elements.prompt.textContent = dictationMode ? "" : item.meaning;
+    elements.prompt.hidden = dictationMode;
+    elements.scriptTag.hidden = dictationMode;
     elements.prompt.lang = "zh-CN";
     elements.prompt.classList.remove("is-romaji");
-    elements.promptHint.textContent = validationMode ? "输入平假名即可，最多尝试三次。" : "想一想日文写法、读音和声调，再查看答案。";
+    elements.promptHint.textContent = dictationMode ? "点击喇叭可重复播放" : validationMode ? "输入平假名即可，最多尝试三次。" : "想一想日文写法、读音和声调，再查看答案。";
     elements.answerLabel.textContent = "日文答案";
     elements.answerValue.textContent = item.japanese;
     elements.answerDetail.textContent = `假名：${item.kana}　·　声调：${formatAccent(item.accent)}`;
@@ -439,14 +467,15 @@ function renderQuestion() {
   elements.knownButton.classList.remove("pulse");
   elements.forgotButton.classList.remove("pulse");
   if (validationMode) renderValidationArea();
+  if (dictationMode) playDictation();
 }
 
 function renderSequentialCompletion() {
-  setModeLabel("顺序模式 · 本轮已完成");
+  setModeLabel(`${isDictationMode() ? "听写模式" : "顺序模式"} · 本轮已完成`);
   elements.emptyUnitButton.hidden = true;
   elements.scriptTag.textContent = "已完成";
   elements.scriptTag.lang = "zh-CN";
-  elements.prompt.textContent = "本轮检验完成";
+  elements.prompt.textContent = isDictationMode() ? "本轮听写完成" : "本轮检验完成";
   elements.prompt.lang = "zh-CN";
   elements.prompt.classList.remove("is-romaji");
   elements.prompt.classList.add("is-empty");
@@ -455,7 +484,7 @@ function renderSequentialCompletion() {
   elements.judgementActions.hidden = true;
   elements.revealActions.hidden = false;
   elements.revealActions.classList.add("has-two-actions");
-  const restart = makeButton("再检验一遍", "button-primary", restartSequentialRun);
+  const restart = makeButton(isDictationMode() ? "再听写一遍" : "再检验一遍", "button-primary", restartSequentialRun);
   restart.id = "restart-sequence-button";
   const random = makeButton("切换随机模式", "button-secondary", () => setPracticeOrder("random"));
   elements.revealActions.append(restart, random);
@@ -475,6 +504,33 @@ function renderPronunciationState(state) {
   button.setAttribute("aria-busy", String(state === "loading"));
   button.title = label;
   button.replaceChildren(icon(state === "loading" ? "loading" : state === "playing" ? "stop" : "volume"));
+  elements.dictationButton.dataset.state = state;
+  elements.dictationButton.setAttribute("aria-busy", String(state === "loading"));
+}
+
+function playDictation() {
+  if (!current || currentPage !== "practice" || !isDictationMode()) return;
+  const question = current;
+  elements.dictationStatus.hidden = true;
+  if (!transitionLocked) {
+    elements.prompt.textContent = "";
+    elements.prompt.hidden = true;
+  }
+  pronunciationPlayer.play(getPronunciationText(question.item), {
+    onBlocked: () => {
+      if (current !== question || !isDictationMode() || transitionLocked) return;
+      elements.dictationStatus.textContent = "点击喇叭开始播放";
+      elements.dictationStatus.hidden = false;
+    },
+    onError: () => {
+      if (current !== question || !isDictationMode() || transitionLocked) return;
+      elements.prompt.textContent = question.item.japanese;
+      elements.prompt.lang = "ja";
+      elements.prompt.hidden = false;
+      elements.dictationStatus.textContent = "无听力资源";
+      elements.dictationStatus.hidden = false;
+    },
+  });
 }
 
 function togglePronunciation() {
@@ -1059,6 +1115,7 @@ function openDataModal() {
 }
 
 function bindEvents() {
+  elements.dictationButton.addEventListener("click", playDictation);
   elements.pronunciationButton.addEventListener("click", togglePronunciation);
   window.addEventListener("pagehide", () => pronunciationPlayer.stop());
   document.addEventListener("visibilitychange", () => {
@@ -1130,7 +1187,8 @@ function bindEvents() {
     if (event.isComposing || event.keyCode === 229 || event.defaultPrevented) return;
     const vocabularyValidation = currentPage === "practice" && activeUnit.kind === "vocabulary" && isValidationMode();
     const control = event.target.closest("input, textarea, select, button, a, summary, [contenteditable]");
-    const validationTarget = !control || elements.validationArea.contains(control);
+    const validationTarget = !control || elements.validationArea.contains(control)
+      || (isDictationMode() && control === elements.dictationButton);
     const sequenceResultTarget = isSequentialMode() && !current && control && elements.revealActions.contains(control);
     if (event.repeat) {
       if (vocabularyValidation && (validationTarget || sequenceResultTarget) && (event.key === "Enter" || event.code === "Space")) event.preventDefault();
@@ -1229,6 +1287,7 @@ async function start() {
   try {
     units = await libraryClient.initialize();
     activeUnit = units.find((unit) => unit.id === loadActiveUnit()) || units[0];
+    normalizePracticeOrderForUnit();
     progress = loadProgress(activeUnit.id, activeItems().map((item) => item.id));
   } catch (error) { showToast(`词库加载失败：${error.message}。请点击「刷新词库」重试。`); }
   updateStorageNotice();

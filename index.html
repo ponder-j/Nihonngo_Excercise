@@ -95,6 +95,10 @@
                   <input type="radio" name="practice-order" value="sequential" />
                   <span>顺序模式</span>
                 </label>
+                <label class="order-option" id="dictation-option" hidden>
+                  <input type="radio" name="practice-order" value="dictation" />
+                  <span>听写模式</span>
+                </label>
               </fieldset>
               <div class="sequence-actions" id="sequence-actions" hidden>
                 <span class="sequence-status" id="sequence-status" aria-live="polite" hidden></span>
@@ -108,7 +112,11 @@
           <div class="question-stage" id="question-stage">
             <span class="script-tag" id="script-tag">平假名</span>
             <div class="prompt" id="prompt" lang="ja">あ</div>
+            <button class="dictation-button" id="dictation-button" type="button" aria-label="重播单词发音" title="重播单词发音" data-state="idle" hidden>
+              <span data-icon="volume"></span>
+            </button>
             <p class="prompt-hint" id="prompt-hint">先在心里读出来，再决定要不要显示答案。</p>
+            <p class="dictation-status" id="dictation-status" role="status" aria-live="polite" hidden></p>
             <div class="answer-panel" id="answer-panel" aria-live="polite" hidden>
               <span class="answer-label">答案</span>
               <div class="answer-reading">

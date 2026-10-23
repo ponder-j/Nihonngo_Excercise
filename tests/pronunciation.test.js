@@ -220,3 +220,48 @@ test("unavailable native speech and stalled speech recover to idle", () => {
   assert.equal(stalled.states.at(-1), "idle");
   assert.equal(stalled.cancellations(), 1);
 });
+
+test("blocked autoplay reports a click-to-play state without treating the resource as missing", async () => {
+  const env = setup();
+  let blocked = 0;
+  const options = { onBlocked: () => { blocked += 1; } };
+  env.player.play("がくせい", options);
+  env.audios[0].pending.reject(Object.assign(new Error("gesture required"), { name: "NotAllowedError" }));
+  await Promise.resolve();
+  assert.equal(blocked, 1);
+  assert.equal(env.errors.length, 0);
+  assert.equal(env.spoken.length, 0);
+  assert.equal(env.audios[0].unloaded, true);
+  assert.equal(env.states.at(-1), "idle");
+  env.player.play("がくせい", options);
+  env.audios[1].pending.resolve();
+  await Promise.resolve();
+  assert.equal(env.states.at(-1), "playing");
+  assert.equal(blocked, 1);
+  env.player.stop();
+});
+
+test("per-play errors are delivered only for the active playback", () => {
+  const env = setup({ native: false });
+  let oldErrors = 0, currentErrors = 0;
+  env.player.play("あ", { onError: () => { oldErrors += 1; } });
+  const oldError = env.audios[0].onerror;
+  env.player.play("い", { onError: () => { currentErrors += 1; } });
+  oldError();
+  assert.equal(oldErrors, 0);
+  assert.equal(currentErrors, 0);
+  env.audios[1].onerror();
+  assert.equal(currentErrors, 1);
+  assert.equal(env.errors.length, 0);
+});
+
+test("native voice permission rejection also reports blocked playback", () => {
+  const env = setup();
+  let blocked = 0;
+  env.player.play("あ", { onBlocked: () => { blocked += 1; } });
+  env.audios[0].onerror();
+  env.spoken[0].onerror({ error: "not-allowed" });
+  assert.equal(blocked, 1);
+  assert.equal(env.errors.length, 0);
+  assert.equal(env.states.at(-1), "idle");
+});
